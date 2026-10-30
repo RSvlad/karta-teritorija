@@ -1,0 +1,4 @@
+node_modules
+dist
+# Generated at build time from the private Sheet; must never be committed.
+public/data/

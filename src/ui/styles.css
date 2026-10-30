@@ -1,0 +1,36 @@
+:root {
+  --bg: #fafafa; --fg: #1b1b1b; --muted: #5c5c5c; --card: #fff; --line: #d6d6d6;
+  --accent: #1f5fbf; --warn-bg: #fff4d6; --warn-fg: #6b4a00; --err: #b3261e;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212; --fg: #ececec; --muted: #a8a8a8; --card: #1c1c1c; --line: #3a3a3a;
+    --accent: #7fb0ff; --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff8a80;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 36rem; margin: 0 auto; padding: 1rem; }
+h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
+input { width: 100%; min-height: 44px; padding: .5rem .75rem; font: inherit; color: inherit;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+#street { min-height: 56px; font-size: 1.25rem; }
+input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.suggestions { list-style: none; margin: .25rem 0 0; padding: 0; background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.suggestions button { width: 100%; min-height: 44px; padding: .5rem .75rem; text-align: left;
+  font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.suggestions button:hover { background: var(--bg); }
+.muted { color: var(--muted); }
+.error { color: var(--err); }
+.card { margin-top: 1.5rem; padding: 1rem; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+.card-title { font-size: 1.125rem; margin: 0 0 .5rem; }
+.card h2 { font-size: 1rem; margin: .75rem 0 .25rem; }
+.card p { margin: .25rem 0; }
+.swatch { display: inline-block; width: .9rem; height: .9rem; margin-right: .5rem; border-radius: 3px; vertical-align: -1px; }
+.warn { padding: .5rem .75rem; background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; }
+.button { display: inline-block; min-height: 44px; padding: .6rem 1rem; color: var(--bg); background: var(--accent);
+  border-radius: 8px; text-decoration: none; }
+footer { margin-top: 2rem; font-size: .875rem; }

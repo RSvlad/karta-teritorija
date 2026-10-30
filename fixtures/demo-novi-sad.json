@@ -1,0 +1,30 @@
+{
+  "city": "novi-sad",
+  "name": "Нови Сад",
+  "updated": "2026-10-30",
+  "territories": [
+    { "id": "14", "name": "Либерти", "color": "#d9692b", "defaults": { "primary": "Петар П.", "deputy": "Мира М." } },
+    { "id": "15", "name": "Лиман", "color": "#2b7bd9", "defaults": { "primary": "Јован Ј." } }
+  ],
+  "streets": [
+    { "id": "futoska", "name": "Футошка", "settlement": "Нови Сад" },
+    { "id": "jevrejska", "name": "Јеврејска", "settlement": "Нови Сад" },
+    { "id": "zeleznicka", "name": "Железничка", "settlement": "Нови Сад" },
+    { "id": "skolska-ns", "name": "Школска", "settlement": "Нови Сад" },
+    { "id": "skolska-pv", "name": "Школска", "settlement": "Петроварадин" },
+    { "id": "djure-jaksica", "name": "Ђуре Јакшића", "settlement": "Нови Сад" },
+    { "id": "nedodeljena", "name": "Дунавска", "settlement": "Нови Сад" }
+  ],
+  "rules": [
+    { "streetId": "futoska", "from": null, "to": 15, "parity": "all", "territoryId": "14", "assignee": "Петар П." },
+    { "streetId": "futoska", "from": 15, "to": null, "parity": "odd", "territoryId": "14", "assignee": "Мира М." },
+    { "streetId": "futoska", "from": 16, "to": null, "parity": "even", "territoryId": "15" }
+  ],
+  "internal": [
+    { "streetId": "jevrejska", "territoryId": "14" },
+    { "streetId": "zeleznicka", "territoryId": "15" },
+    { "streetId": "skolska-ns", "territoryId": "14" },
+    { "streetId": "skolska-pv", "territoryId": "15" },
+    { "streetId": "djure-jaksica", "territoryId": "15" }
+  ]
+}
