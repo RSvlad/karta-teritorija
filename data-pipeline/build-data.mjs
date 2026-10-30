@@ -6,9 +6,11 @@
 //   PIPELINE_REQUIRED=1     fail instead of falling back to the demo seed (set for deploys)
 //
 // Without config the fictional demo data is used, for local development only.
+// If data-pipeline/cache/<city>/streets.json exists (streets.py), its streets are added to the city.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
+import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
 
 const OUT_DIR = 'public/data';
@@ -37,6 +39,18 @@ function parseCities(json) {
   return cities;
 }
 
+// OSM mismatches are warnings, not errors: OSM names may legitimately differ from the Sheet.
+function reportOsm(id, osm, { missingInOsm, added, skipped }) {
+  console.log(`✔ ${id}: OSM индекс (${osm.fetched ?? 'датум непознат'}), додато улица без правила: ${added}`);
+  const lines = (items) => items.map((s) => `    • ${s}`).join('\n');
+  if (missingInOsm.length) {
+    console.warn(`! ${id}: улице из Sheet-а без пара у OSM-у (проверите писање или освежите индекс):\n${lines(missingInOsm)}`);
+  }
+  if (skipped.length) {
+    console.warn(`! ${id}: улице из OSM-а које су прескочене:\n${lines(skipped)}`);
+  }
+}
+
 const credentials = process.env.GOOGLE_SERVICE_ACCOUNT;
 const citiesJson = process.env.SHEETS_CITIES;
 
@@ -63,9 +77,18 @@ for (const c of cities) {
       fetchSheet(token, c.sheetId, 'Територије'),
       fetchSheet(token, c.sheetId, 'Правила'),
     ]);
-    const data = buildCity({
+    let data = buildCity({
       city: c.id, name: c.name, reportEmail: c.reportEmail, updated, territoriesRaw, rulesRaw,
     });
+    const osm = loadOsmStreets(c.id);
+    if (osm) {
+      const merged = mergeOsmStreets(data, osm.streets);
+      data = merged.data;
+      reportOsm(c.id, osm, merged.report);
+    } else {
+      console.warn(`! ${c.id}: нема OSM индекса улица; претрага познаје само улице из Sheet-а. `
+        + `Покрените: python data-pipeline/streets.py --city ${c.id}`);
+    }
     written.push({ id: c.id, name: c.name, data });
   } catch (e) {
     failed = true;
