@@ -4,6 +4,7 @@ import type { Assignment, CityData, HouseNumber, Resolution, Resolver, Street } 
 import { createStreetSearch } from '../search/streets';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
+import { daysLabel, staleAgeDays } from './freshness';
 import { useRoute } from './route';
 import type { Route } from './route';
 
@@ -270,7 +271,7 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
         {query.trim() === '' ? null : !street && !canList ? (
           <p class="muted">Улица није пронађена.</p>
         ) : result ? (
-          <ResultCard result={result} city={data.name} reportEmail={data.reportEmail} />
+          <ResultCard result={result} city={data.name} reportEmail={data.reportEmail} updated={data.updated} />
         ) : null}
       </section>
       <footer class="muted">Ажурирано: {data.updated}</footer>
@@ -377,8 +378,10 @@ function ShareBar({ title, text }: { title: string; text: string }) {
   );
 }
 
-function ResultCard({ result, city, reportEmail }: { result: Resolution; city: string; reportEmail?: string }) {
+function ResultCard({ result, city, reportEmail, updated }: { result: Resolution; city: string; reportEmail?: string; updated: string }) {
   const title = `${result.street.name}${'house' in result && result.house ? ' ' + formatHouseNumber(result.house) : ''} · ${city}`;
+  // Set only when the data is older than the threshold (VITE_STALE_DAYS, default 90 days).
+  const staleAge = staleAgeDays(updated);
 
   let body;
   switch (result.kind) {
@@ -434,6 +437,11 @@ function ResultCard({ result, city, reportEmail }: { result: Resolution; city: s
   return (
     <article class="card">
       <h2 class="card-title">{title}</h2>
+      {staleAge !== null && (
+        <p class="warn">
+          ⚠ Подаци су последњи пут ажурирани пре {staleAge} {daysLabel(staleAge)} ({updated}) и могу бити застарели.
+        </p>
+      )}
       {body}
       {/* key resets the "copied" note when the result changes. */}
       <ShareBar key={text} title={title} text={text} />
