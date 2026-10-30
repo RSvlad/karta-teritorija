@@ -350,7 +350,7 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
-/** "Подели" uses the Web Share API and falls back to copying text and link; "Копирај" copies the result text. */
+/** "Подели" uses the Web Share API and falls back to copying text and link; "Копирај" copies the result text; "Штампај" prints the card (print styles hide everything else). */
 function ShareBar({ title, text }: { title: string; text: string }) {
   const [note, setNote] = useState<string | null>(null);
 
@@ -373,6 +373,7 @@ function ShareBar({ title, text }: { title: string; text: string }) {
     <div class="actions">
       <button type="button" class="button" onClick={share}>Подели</button>
       <button type="button" class="button secondary" onClick={copy}>Копирај</button>
+      <button type="button" class="button secondary" onClick={() => window.print()}>Штампај</button>
       {note && <span class="muted" role="status">{note}</span>}
     </div>
   );
@@ -443,6 +444,8 @@ function ResultCard({ result, city, reportEmail, updated }: { result: Resolution
         </p>
       )}
       {body}
+      {/* The page footer is hidden in print, so the date goes on the printed card itself. */}
+      <p class="print-only">Ажурирано: {updated}</p>
       {/* key resets the "copied" note when the result changes. */}
       <ShareBar key={text} title={title} text={text} />
     </article>
