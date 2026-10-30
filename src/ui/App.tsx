@@ -4,38 +4,99 @@ import type { Assignment, CityData, Resolution, Resolver, Street } from '../reso
 import { createStreetSearch } from '../search/streets';
 import { normalizeText } from '../search/normalize';
 
-// TODO(phase 1): city selector read from a cities list; single pilot city for now.
-const CITY = 'novi-sad';
+const CITY_KEY = 'moj-paroh:city';
 
-type Loaded =
+/** Entry of data/cities.json (produced by the pipeline): the cities that have a data file. */
+interface CityRef {
+  id: string;
+  name: string;
+}
+
+type Remote<T> =
   | { status: 'loading' }
   | { status: 'error'; message: string }
-  | { status: 'ready'; data: CityData; resolver: Resolver };
+  | { status: 'ready'; value: T };
 
-function useCity(): Loaded {
-  const [state, setState] = useState<Loaded>({ status: 'loading' });
+async function fetchJson<T>(url: string): Promise<T> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()) as T;
+}
+
+/** Runs `load` whenever `key` changes. A result for an older key is never returned for the current one. */
+function useRemote<T>(key: string, load: () => Promise<T>): Remote<T> {
+  const [done, setDone] = useState<{ key: string; result: Exclude<Remote<T>, { status: 'loading' }> } | null>(null);
   useEffect(() => {
     let alive = true;
-    fetch(`data/${CITY}.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<CityData>;
-      })
-      .then((data) => alive && setState({ status: 'ready', data, resolver: createResolver(data) }))
-      .catch((e) => {
-        const message = e instanceof DataError ? e.message : 'Подаци тренутно нису доступни.';
-        alive && setState({ status: 'error', message });
-      });
+    load()
+      .then((value) => ({ status: 'ready' as const, value }))
+      .catch((e) => ({
+        status: 'error' as const,
+        message: e instanceof DataError ? e.message : 'Подаци тренутно нису доступни.',
+      }))
+      .then((result) => { if (alive) setDone({ key, result }); });
     return () => { alive = false; };
-  }, []);
-  return state;
+  }, [key]);
+  return done && done.key === key ? done.result : { status: 'loading' };
+}
+
+/** Last chosen city if it still exists, otherwise the first one in the list. */
+function initialCity(cities: CityRef[]): string {
+  try {
+    const saved = localStorage.getItem(CITY_KEY);
+    if (saved && cities.some((c) => c.id === saved)) return saved;
+  } catch {
+    // Storage can be blocked (private mode); fall back to the default.
+  }
+  return cities[0]!.id;
 }
 
 export function App() {
-  const city = useCity();
-  if (city.status === 'loading') return <main><p class="muted" role="status">Учитавање…</p></main>;
-  if (city.status === 'error') return <main><p class="error" role="alert">{city.message}</p></main>;
-  return <Search data={city.data} resolver={city.resolver} />;
+  const cities = useRemote('cities', () => fetchJson<CityRef[]>('data/cities.json'));
+  if (cities.status === 'loading') return <main><p class="muted" role="status">Учитавање…</p></main>;
+  if (cities.status === 'error') return <main><p class="error" role="alert">{cities.message}</p></main>;
+  if (cities.value.length === 0) return <main><p class="error" role="alert">Нема доступних градова.</p></main>;
+  return <Cities cities={cities.value} />;
+}
+
+function Cities({ cities }: { cities: CityRef[] }) {
+  const [cityId, setCityId] = useState(() => initialCity(cities));
+  const city = useRemote(cityId, async () => {
+    const data = await fetchJson<CityData>(`data/${encodeURIComponent(cityId)}.json`);
+    return { data, resolver: createResolver(data) };
+  });
+  const current = cities.find((c) => c.id === cityId)!;
+
+  const choose = (id: string) => {
+    setCityId(id);
+    try {
+      localStorage.setItem(CITY_KEY, id);
+    } catch {
+      // Choice just won't be remembered.
+    }
+  };
+
+  return (
+    <main>
+      <h1>Територије · {current.name}</h1>
+      {cities.length > 1 && (
+        <>
+          <label for="city">Град</label>
+          <select id="city" value={cityId} onChange={(e) => choose(e.currentTarget.value)}>
+            {cities.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </>
+      )}
+      {city.status === 'loading' ? (
+        <p class="muted" role="status">Учитавање…</p>
+      ) : city.status === 'error' ? (
+        <p class="error" role="alert">{city.message}</p>
+      ) : (
+        // key resets the query and chosen street when the city changes.
+        <Search key={cityId} data={city.value.data} resolver={city.value.resolver} />
+      )}
+    </main>
+  );
 }
 
 function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
@@ -55,9 +116,7 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
   const showList = !street && suggestions.length > 0;
 
   return (
-    <main>
-      <h1>Територије · {data.name}</h1>
-
+    <>
       <label for="street">Улица</label>
       <input
         id="street"
@@ -100,7 +159,7 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
         ) : null}
       </section>
       <footer class="muted">Ажурирано: {data.updated}</footer>
-    </main>
+    </>
   );
 }
 
