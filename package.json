@@ -6,7 +6,7 @@
   "scripts": {
     "predev": "node scripts/seed-demo-data.mjs",
     "dev": "vite",
-    "prebuild": "node scripts/seed-demo-data.mjs",
+    "prebuild": "node data-pipeline/build-data.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
