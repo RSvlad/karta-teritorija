@@ -2,3 +2,6 @@ node_modules
 dist
 # Generated at build time from the private Sheet; must never be committed.
 public/data/
+# Raw OSMnx HTTP cache. The street index data-pipeline/cache/<city>/streets.json IS committed.
+data-pipeline/cache/osmnx/
+__pycache__/
