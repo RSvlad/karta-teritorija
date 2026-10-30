@@ -1,0 +1,4 @@
+# Python dependencies of the data pipeline (only needed to refresh the OSM street index).
+# GeoPandas/Shapely are pulled in by OSMnx and reused by territories.py (#8).
+osmnx>=2.0,<3
+pyyaml>=6

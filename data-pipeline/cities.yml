@@ -1,0 +1,10 @@
+# Cities for the OSM street index (data-pipeline/streets.py).
+# The key is the city id and must match the id in the SHEETS_CITIES secret.
+novi-sad:
+  name: Нови Сад
+  # Query for the city boundary (OSMnx geocodes it with Nominatim). Streets are taken from inside it.
+  # Check the returned polygon covers the area you need (e.g. Petrovaradin, Sremska Kamenica).
+  place: Novi Sad, Serbia
+  # Settlements are OSM administrative boundaries of these admin_level values.
+  # Serbia: settlement (naselje) = 9, municipality = 8, city = 7 (OSM wiki: Serbia/RGZ Import).
+  settlement_admin_levels: [9]
