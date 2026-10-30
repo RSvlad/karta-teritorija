@@ -25,20 +25,19 @@ jobs:
 
       - run: npm install
 
+      # Type or test failures stop the workflow here, before anything is published.
+      - run: npm run typecheck
+      - run: npm test
+
+      # `prebuild` runs data-pipeline/build-data.mjs (Sheet -> public/data/, git-ignored),
+      # so the JSON goes straight into the Pages artifact and is never committed.
+      # Outside pull requests the Sheet credentials are required: no demo data in a deploy.
+      # Pull requests never receive the secrets and build with the demo seed.
       - run: npm run build
         env:
           GOOGLE_SERVICE_ACCOUNT: ${{ github.event_name != 'pull_request' && secrets.GOOGLE_SERVICE_ACCOUNT || '' }}
           SHEETS_CITIES: ${{ github.event_name != 'pull_request' && secrets.SHEETS_CITIES || '' }}
           PIPELINE_REQUIRED: ${{ github.event_name != 'pull_request' && '1' || '' }}
-      # Sheet -> JSON data pipeline step and pass its credentials as secrets.
-
-      # Type or test failures stop the workflow here, before anything is published.
-      - run: npm run typecheck
-      - run: npm test
-
-      # `prebuild` generates public/data/ (git-ignored), so the JSON goes
-      # straight into the Pages artifact and is never committed.
-      - run: npm run build
 
       # Optional custom domain: set the repository variable CUSTOM_DOMAIN.
       - name: Write CNAME
