@@ -20,9 +20,11 @@ input, select { width: 100%; min-height: 44px; padding: .5rem .75rem; font: inhe
 input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
 .suggestions { list-style: none; margin: .25rem 0 0; padding: 0; background: var(--card);
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.suggestions button { width: 100%; min-height: 44px; padding: .5rem .75rem; text-align: left;
-  font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
-.suggestions button:hover { background: var(--bg); }
+.suggestions li { display: flex; align-items: center; min-height: 44px; padding: .5rem .75rem; cursor: pointer; }
+.suggestions li:hover { background: var(--bg); }
+/* Active option is marked by an outline and bold text, not by colour alone. */
+.suggestions li[aria-selected="true"] { background: var(--bg); outline: 3px solid var(--accent); outline-offset: -3px; }
+mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
 .muted { color: var(--muted); }
 .error { color: var(--err); }
 .card { margin-top: 1.5rem; padding: 1rem; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
