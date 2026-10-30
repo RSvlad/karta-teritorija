@@ -25,7 +25,11 @@ jobs:
 
       - run: npm install
 
-      # TODO(#3): replace the demo seed (run via `prebuild`) with the
+      - run: npm run build
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ github.event_name != 'pull_request' && secrets.GOOGLE_SERVICE_ACCOUNT || '' }}
+          SHEETS_CITIES: ${{ github.event_name != 'pull_request' && secrets.SHEETS_CITIES || '' }}
+          PIPELINE_REQUIRED: ${{ github.event_name != 'pull_request' && '1' || '' }}
       # Sheet -> JSON data pipeline step and pass its credentials as secrets.
 
       # Type or test failures stop the workflow here, before anything is published.
