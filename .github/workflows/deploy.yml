@@ -1,0 +1,60 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      # TODO(#3): replace the demo seed (run via `prebuild`) with the
+      # Sheet -> JSON data pipeline step and pass its credentials as secrets.
+
+      # Type or test failures stop the workflow here, before anything is published.
+      - run: npm run typecheck
+      - run: npm test
+
+      # `prebuild` generates public/data/ (git-ignored), so the JSON goes
+      # straight into the Pages artifact and is never committed.
+      - run: npm run build
+
+      # Optional custom domain: set the repository variable CUSTOM_DOMAIN.
+      - name: Write CNAME
+        if: ${{ vars.CUSTOM_DOMAIN != '' }}
+        run: echo "${{ vars.CUSTOM_DOMAIN }}" > dist/CNAME
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
