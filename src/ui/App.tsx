@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'preact/hooks';
 import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
 import type { Assignment, CityData, HouseNumber, Resolution, Resolver, Street } from '../resolver';
 import { createStreetSearch } from '../search/streets';
+import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
 
 const CITY_KEY = 'moj-paroh:city';
@@ -99,11 +100,19 @@ function Cities({ cities }: { cities: CityRef[] }) {
   );
 }
 
+/** Street name with the part matching the query marked (same Cyrillic/Latin folding as the search). */
+function Highlight({ text, query }: { text: string; query: string }) {
+  return <>{highlightParts(text, query).map((p, i) => (p.match ? <mark key={i}>{p.text}</mark> : p.text))}</>;
+}
+
 function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
   const search = useMemo(() => createStreetSearch(data.streets), [data]);
   const [query, setQuery] = useState('');
   const [chosen, setChosen] = useState<Street | null>(null);
   const [houseText, setHouseText] = useState('');
+  // Combobox state: highlighted option (-1 = none) and whether Escape has dismissed the list.
+  const [active, setActive] = useState(-1);
+  const [open, setOpen] = useState(true);
 
   const suggestions = useMemo(() => search(query), [search, query]);
   // A unique exact match counts as chosen without a click.
@@ -113,7 +122,48 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
   const house = parseHouseNumber(houseText);
   const houseInvalid = houseText.trim() !== '' && !house;
   const result = street && !houseInvalid ? resolver.resolve(street.id, house) : null;
-  const showList = !street && suggestions.length > 0;
+  const canList = !street && suggestions.length > 0;
+  const showList = open && canList;
+
+  const pick = (s: Street) => {
+    setChosen(s);
+    setQuery(s.name);
+    setActive(-1);
+  };
+
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (!showList) {
+      // Escape closed the list; ArrowDown brings it back.
+      if (e.key === 'ArrowDown' && canList) {
+        e.preventDefault();
+        setOpen(true);
+        setActive(0);
+      }
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setActive((i) => (i + 1) % suggestions.length);
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setActive((i) => (i <= 0 ? suggestions.length - 1 : i - 1));
+        break;
+      case 'Enter':
+        if (active >= 0) {
+          e.preventDefault();
+          pick(suggestions[active]!);
+        }
+        break;
+      case 'Escape':
+        // Also stops type="search" from clearing the field.
+        e.preventDefault();
+        setOpen(false);
+        setActive(-1);
+        break;
+    }
+  };
 
   return (
     <>
@@ -121,20 +171,32 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
       <input
         id="street"
         type="search"
+        role="combobox"
         autocomplete="off"
         value={query}
-        onInput={(e) => { setQuery(e.currentTarget.value); setChosen(null); }}
+        onInput={(e) => { setQuery(e.currentTarget.value); setChosen(null); setOpen(true); setActive(-1); }}
+        onKeyDown={onKeyDown}
+        aria-autocomplete="list"
         aria-controls="suggestions"
         aria-expanded={showList}
+        aria-activedescendant={showList && active >= 0 ? `suggestion-${active}` : undefined}
       />
       {showList && (
-        <ul id="suggestions" class="suggestions">
-          {suggestions.map((s) => (
-            <li key={s.id}>
-              <button type="button" onClick={() => { setChosen(s); setQuery(s.name); }}>
-                {s.name}
+        <ul id="suggestions" class="suggestions" role="listbox" aria-label="Предлози улица">
+          {suggestions.map((s, i) => (
+            <li
+              key={s.id}
+              id={`suggestion-${i}`}
+              role="option"
+              aria-selected={i === active}
+              // Keeps focus in the input while clicking an option.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(s)}
+            >
+              <span>
+                <Highlight text={s.name} query={query} />
                 {s.settlement && <span class="muted"> · {s.settlement}</span>}
-              </button>
+              </span>
             </li>
           ))}
         </ul>
@@ -152,7 +214,7 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
       {houseInvalid && <p class="error">Број није у препознатом облику (нпр. 15, 15а, 15/2).</p>}
 
       <section aria-live="polite" class="result">
-        {query.trim() === '' ? null : !street && !showList ? (
+        {query.trim() === '' ? null : !street && !canList ? (
           <p class="muted">Улица није пронађена.</p>
         ) : result ? (
           <ResultCard result={result} city={data.name} reportEmail={data.reportEmail} />
