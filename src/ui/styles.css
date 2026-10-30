@@ -35,4 +35,7 @@ mark { background: none; color: inherit; font-weight: 700; text-decoration: unde
 .warn { padding: .5rem .75rem; background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; }
 .button { display: inline-block; min-height: 44px; padding: .6rem 1rem; color: var(--bg); background: var(--accent);
   border-radius: 8px; text-decoration: none; }
+button.button { border: 1px solid var(--accent); font: inherit; cursor: pointer; }
+.button.secondary { color: var(--accent); background: transparent; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1rem; }
 footer { margin-top: 2rem; font-size: .875rem; }

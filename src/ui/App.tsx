@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
 import type { Assignment, CityData, HouseNumber, Resolution, Resolver, Street } from '../resolver';
 import { createStreetSearch } from '../search/streets';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
+import { useRoute } from './route';
+import type { Route } from './route';
 
 const CITY_KEY = 'moj-paroh:city';
 
@@ -41,8 +43,9 @@ function useRemote<T>(key: string, load: () => Promise<T>): Remote<T> {
   return done && done.key === key ? done.result : { status: 'loading' };
 }
 
-/** Last chosen city if it still exists, otherwise the first one in the list. */
-function initialCity(cities: CityRef[]): string {
+/** City from the link if it exists, else the last chosen city if it still exists, else the first one in the list. */
+function initialCity(cities: CityRef[], linked?: string): string {
+  if (linked && cities.some((c) => c.id === linked)) return linked;
   try {
     const saved = localStorage.getItem(CITY_KEY);
     if (saved && cities.some((c) => c.id === saved)) return saved;
@@ -61,15 +64,22 @@ export function App() {
 }
 
 function Cities({ cities }: { cities: CityRef[] }) {
-  const [cityId, setCityId] = useState(() => initialCity(cities));
+  const [route, go] = useRoute();
+  const [cityId, setCityId] = useState(() => initialCity(cities, route?.city));
   const city = useRemote(cityId, async () => {
     const data = await fetchJson<CityData>(`data/${encodeURIComponent(cityId)}.json`);
     return { data, resolver: createResolver(data) };
   });
   const current = cities.find((c) => c.id === cityId)!;
 
+  // Back/Forward or a pasted link pointing at another city.
+  useEffect(() => {
+    if (route && route.city !== cityId && cities.some((c) => c.id === route.city)) setCityId(route.city);
+  }, [route]);
+
   const choose = (id: string) => {
     setCityId(id);
+    go({ city: id }, false);
     try {
       localStorage.setItem(CITY_KEY, id);
     } catch {
@@ -94,7 +104,14 @@ function Cities({ cities }: { cities: CityRef[] }) {
         <p class="error" role="alert">{city.message}</p>
       ) : (
         // key resets the query and chosen street when the city changes.
-        <Search key={cityId} data={city.value.data} resolver={city.value.resolver} />
+        <Search
+          key={cityId}
+          cityId={cityId}
+          data={city.value.data}
+          resolver={city.value.resolver}
+          route={route?.city === cityId ? route : null}
+          go={go}
+        />
       )}
     </main>
   );
@@ -105,11 +122,21 @@ function Highlight({ text, query }: { text: string; query: string }) {
   return <>{highlightParts(text, query).map((p, i) => (p.match ? <mark key={i}>{p.text}</mark> : p.text))}</>;
 }
 
-function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
+interface SearchProps {
+  cityId: string;
+  data: CityData;
+  resolver: Resolver;
+  /** Route of this city, or null when the URL does not point at it. */
+  route: Route | null;
+  go: (next: Route, replace: boolean) => void;
+}
+
+function Search({ cityId, data, resolver, route, go }: SearchProps) {
   const search = useMemo(() => createStreetSearch(data.streets), [data]);
-  const [query, setQuery] = useState('');
-  const [chosen, setChosen] = useState<Street | null>(null);
-  const [houseText, setHouseText] = useState('');
+  const linkedStreet = route?.street ? data.streets.find((s) => s.id === route.street) ?? null : null;
+  const [query, setQuery] = useState(linkedStreet?.name ?? '');
+  const [chosen, setChosen] = useState<Street | null>(linkedStreet);
+  const [houseText, setHouseText] = useState(linkedStreet ? route?.house ?? '' : '');
   // Combobox state: highlighted option (-1 = none) and whether Escape has dismissed the list.
   const [active, setActive] = useState(-1);
   const [open, setOpen] = useState(true);
@@ -124,6 +151,32 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
   const result = street && !houseInvalid ? resolver.resolve(street.id, house) : null;
   const canList = !street && suggestions.length > 0;
   const showList = open && canList;
+
+  // State -> URL. A newly chosen street adds a history entry; house number edits rewrite it.
+  // While the house number is half-typed (invalid) the URL keeps the last valid one.
+  const lastStreetId = useRef(street?.id);
+  useEffect(() => {
+    if (houseInvalid || (!route && !street)) return;
+    const pushed = !!street && street.id !== lastStreetId.current;
+    lastStreetId.current = street?.id;
+    go({ city: cityId, street: street?.id, house: street && house ? houseText.trim() : undefined }, !pushed);
+  }, [street?.id, houseText]);
+
+  // URL -> state (Back/Forward). Skipped when the URL already matches what is on screen,
+  // which is also the case right after the effect above has written it.
+  useEffect(() => {
+    if (!route) return;
+    const linked = route.street ? data.streets.find((s) => s.id === route.street) ?? null : null;
+    if (!linked) {
+      if (!street) return; // nothing on screen to reset (e.g. the user is still typing)
+    } else if (linked.id === street?.id && (route.house ?? '') === houseText.trim()) {
+      return;
+    }
+    setChosen(linked);
+    setQuery(linked?.name ?? '');
+    setHouseText(linked ? route.house ?? '' : '');
+    setActive(-1);
+  }, [route?.street, route?.house]);
 
   const pick = (s: Street) => {
     setChosen(s);
@@ -260,6 +313,70 @@ function reportLink(email: string, street: Street, house: HouseNumber | null, ci
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 }
 
+/** Plain-text version of an assignment, for Copy and Share. */
+function assignmentText(a: Assignment): string {
+  const people = a.people.deputy ? `${a.people.primary} (заменик: ${a.people.deputy})` : a.people.primary;
+  return `Територија ${a.territory.id} „${a.territory.name}“: ${people}${a.rule ? ' ' + formatRange(a.rule) : ''}`;
+}
+
+/** Plain-text version of the whole result card. */
+function resultText(result: Resolution, title: string): string {
+  const lines = [title];
+  switch (result.kind) {
+    case 'rules':
+      lines.push(...result.assignments.map(assignmentText));
+      if (result.border) lines.push(`⚠ Број ${formatHouseNumber(result.house)} је граничан: наведена су оба задужења.`);
+      break;
+    case 'linear':
+      lines.push('Улица је подељена по бројевима:', ...result.segments.map(assignmentText));
+      break;
+    case 'inherited':
+      lines.push(assignmentText(result.assignment));
+      break;
+    case 'unassigned':
+      lines.push('Улица није додељена.');
+      break;
+  }
+  return lines.join('\n');
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false; // no clipboard access (insecure context, denied permission)
+  }
+}
+
+/** "Подели" uses the Web Share API and falls back to copying text and link; "Копирај" copies the result text. */
+function ShareBar({ title, text }: { title: string; text: string }) {
+  const [note, setNote] = useState<string | null>(null);
+
+  const copy = async () => setNote((await copyText(text)) ? 'Копирано.' : 'Копирање није успело.');
+
+  const share = async () => {
+    const url = location.href;
+    if (typeof navigator.share === 'function') {
+      try {
+        await navigator.share({ title, text, url });
+        return;
+      } catch (e) {
+        if (e instanceof DOMException && e.name === 'AbortError') return; // the user closed the share sheet
+      }
+    }
+    setNote((await copyText(`${text}\n${url}`)) ? 'Текст и линк су копирани.' : 'Дељење није успело.');
+  };
+
+  return (
+    <div class="actions">
+      <button type="button" class="button" onClick={share}>Подели</button>
+      <button type="button" class="button secondary" onClick={copy}>Копирај</button>
+      {note && <span class="muted" role="status">{note}</span>}
+    </div>
+  );
+}
+
 function ResultCard({ result, city, reportEmail }: { result: Resolution; city: string; reportEmail?: string }) {
   const title = `${result.street.name}${'house' in result && result.house ? ' ' + formatHouseNumber(result.house) : ''} · ${city}`;
 
@@ -313,10 +430,13 @@ function ResultCard({ result, city, reportEmail }: { result: Resolution; city: s
     }
   }
 
+  const text = resultText(result, title);
   return (
     <article class="card">
       <h2 class="card-title">{title}</h2>
       {body}
+      {/* key resets the "copied" note when the result changes. */}
+      <ShareBar key={text} title={title} text={text} />
     </article>
   );
 }
