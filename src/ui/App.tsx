@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'preact/hooks';
 import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
-import type { Assignment, CityData, Resolution, Resolver, Street } from '../resolver';
+import type { Assignment, CityData, HouseNumber, Resolution, Resolver, Street } from '../resolver';
 import { createStreetSearch } from '../search/streets';
 import { normalizeText } from '../search/normalize';
 
@@ -155,7 +155,7 @@ function Search({ data, resolver }: { data: CityData; resolver: Resolver }) {
         {query.trim() === '' ? null : !street && !showList ? (
           <p class="muted">Улица није пронађена.</p>
         ) : result ? (
-          <ResultCard result={result} city={data.name} />
+          <ResultCard result={result} city={data.name} reportEmail={data.reportEmail} />
         ) : null}
       </section>
       <footer class="muted">Ажурирано: {data.updated}</footer>
@@ -182,7 +182,23 @@ function TerritoryHeading({ a }: { a: Assignment }) {
   );
 }
 
-function ResultCard({ result, city }: { result: Resolution; city: string }) {
+/** Per-city address from the data, else the build-time VITE_REPORT_EMAIL; undefined when neither is configured. */
+function reportRecipient(fromData: string | undefined): string | undefined {
+  const email = (fromData ?? import.meta.env.VITE_REPORT_EMAIL)?.trim();
+  return email || undefined;
+}
+
+function reportLink(email: string, street: Street, house: HouseNumber | null, city: string): string {
+  const lines = [
+    `Улица: ${street.name}${street.settlement ? ` (${street.settlement})` : ''}`,
+    ...(house ? [`Број: ${formatHouseNumber(house)}`] : []),
+    `Град: ${city}`,
+  ];
+  const subject = `Недодељена улица: ${street.name}`;
+  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+}
+
+function ResultCard({ result, city, reportEmail }: { result: Resolution; city: string; reportEmail?: string }) {
   const title = `${result.street.name}${'house' in result && result.house ? ' ' + formatHouseNumber(result.house) : ''} · ${city}`;
 
   let body;
@@ -224,13 +240,15 @@ function ResultCard({ result, city }: { result: Resolution; city: string }) {
         </>
       );
       break;
-    case 'unassigned':
+    case 'unassigned': {
+      const email = reportRecipient(reportEmail);
       body = (
         <>
           <p>Улица није додељена.</p>
-          <a class="button" href={`mailto:?subject=${encodeURIComponent('Недодељена улица: ' + title)}`}>Пријави</a>
+          {email && <a class="button" href={reportLink(email, result.street, result.house, city)}>Пријави</a>}
         </>
       );
+    }
   }
 
   return (
