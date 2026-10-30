@@ -39,3 +39,23 @@ button.button { border: 1px solid var(--accent); font: inherit; cursor: pointer;
 .button.secondary { color: var(--accent); background: transparent; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1rem; }
 footer { margin-top: 2rem; font-size: .875rem; }
+.print-only { display: none; }
+
+/* Print: only the result card on one A4 page, black on white, no controls.
+   Colour is always paired with the territory name, so the page reads in black and white. */
+@page { size: A4; margin: 15mm; }
+@media print {
+  html, body { background: #fff; color: #000; font-size: 12pt; }
+  main { max-width: none; padding: 0; }
+  /* Everything in <main> except the result section (title, city and street fields, footer). */
+  main > :not(.result) { display: none; }
+  .result { margin: 0; }
+  .card { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: #000; break-inside: avoid; }
+  .card-title { font-size: 18pt; }
+  .card h2 { font-size: 14pt; }
+  .muted { color: #000; }
+  .swatch { width: 1rem; height: 1rem; border: 1px solid #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .warn { background: none; color: #000; border: 1px solid #000; }
+  .actions, .button { display: none; }
+  .print-only { display: block; margin-top: 1rem; font-size: 10pt; }
+}
