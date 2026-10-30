@@ -42,6 +42,8 @@ export interface CityData {
   city: string;
   name: string;
   updated: string;
+  /** Recipient of "report unassigned street" emails. Falls back to VITE_REPORT_EMAIL; no button if neither is set. */
+  reportEmail?: string;
   territories: Territory[];
   streets: Street[];
   rules: Rule[];
