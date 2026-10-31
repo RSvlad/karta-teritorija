@@ -51,6 +51,7 @@ MIN_BLOCK_M2 = 1.0    # smaller faces are slivers of the noding, not blocks
 SNAP_M = 25.0         # a capital this close to a block (e.g. on the street) still seeds it
 INNER_M = 2.0         # a street within this distance of a border is a border street, not an internal one
 INTERNAL_SHARE = 0.9  # a street is internal when this much of its length is inside one territory
+BORDER_MIN_M = 10.0   # a street runs along a territory's border when at least this much of it lies on it
 
 BARRIER_RAILWAY = {"rail", "light_rail"}
 BARRIER_WATERWAY = {"river", "canal"}
@@ -293,6 +294,36 @@ def find_internal(streets: list, polygons: dict) -> list:
     return found
 
 
+def find_border(streets: list, polygons: dict) -> list:
+    """Streets running along the border between two or more territories.
+
+    Such a street needs rules for both sides (odd and even numbers), see report.py (#9).
+    """
+    edges = {tid: poly.boundary.buffer(INNER_M) for tid, poly in polygons.items()}
+    groups: dict[tuple, list] = defaultdict(list)
+    for s in streets:
+        if s["key"]:
+            groups[(s["key"], s["skey"])].append(s)
+    found = []
+    for members in groups.values():
+        line = unary_union([m["line"] for m in members])
+        if line.length <= 0:
+            continue
+        touched = sorted(tid for tid, edge in edges.items()
+                         if edge.intersection(line).length >= BORDER_MIN_M)
+        if len(touched) > 1:
+            found.append({"name": members[0]["name"], "settlement": members[0]["settlement"],
+                          "territories": touched})
+    found.sort(key=lambda f: (f["name"], f["settlement"]))
+    return found
+
+
+def lnglat(geom, metric) -> dict:
+    """Representative point of a metric-CRS geometry as {"lat", "lng"} (for the report's "where")."""
+    lng, lat = to_wgs84_json(geom.representative_point(), metric)["coordinates"]
+    return {"lat": lat, "lng": lng}
+
+
 # ---------------------------------------------------------------------------------------------
 # OSM network cache
 # ---------------------------------------------------------------------------------------------
@@ -475,17 +506,23 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
     graph = block_graph(blocks, scope_barriers + walls)
     drawing = draw(blocks, graph, seeds, overrides)
     internal = find_internal(streets, drawing.polygons)
+    border = find_border(streets, drawing.polygons)
+    for c in drawing.conflicts:
+        c["center"] = lnglat(unary_union([blocks[i] for i in c["blocks"]]), metric)
 
     edge = boundary.buffer(2 * TOL_M) if not boundary.is_empty else None
     stats = {}
     for tid in seeds:
         poly = drawing.polygons.get(tid)
+        touches = bool(poly is not None and edge is not None and poly.intersects(edge))
         stats[tid] = {
             "source": drawing.sources[tid],
             "blocks": len(drawing.blocks_of[tid]),
             "areaM2": round(poly.area) if poly is not None else 0,
-            "touchesCityBoundary": bool(poly is not None and edge is not None and poly.intersects(edge)),
+            "touchesCityBoundary": touches,
+            "boundaryContact": lnglat(poly.intersection(edge), metric) if touches else None,
             "capital": drawing.seeds.get(tid),
+            "hasCapital": seeds[tid] is not None,
             "capitalInsidePolygon": None if seeds[tid] is None or poly is None
             else bool(poly.buffer(TOL_M).contains(seeds[tid])),
         }
@@ -497,6 +534,7 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
         "unassigned": {"blocks": len(drawing.unassigned),
                        "areaM2": round(sum(blocks[i].area for i in drawing.unassigned))},
         "internal": internal,
+        "border": border,
     }
 
     work = WORK_DIR / city_id
