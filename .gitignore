@@ -5,3 +5,5 @@ public/data/
 # Raw OSMnx HTTP cache. The street index data-pipeline/cache/<city>/streets.json IS committed.
 data-pipeline/cache/osmnx/
 __pycache__/
+# Per-run inputs/outputs of territories.py (may contain Sheet data).
+data-pipeline/work/
