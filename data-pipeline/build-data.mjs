@@ -128,7 +128,9 @@ for (const c of cities) {
     // the "Обим" tab and geocoded capitals keeps the older capital-and-scope drawing.
     let drawing = null;
     const hasCapitals = data.places.some((p) => p.kind === 'capital' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
-    if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
+    if (data.territories.length === 0) {
+      console.warn(`! ${c.id}: нема територија у листу „Територије“; границе се не цртају.`);
+    } else if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
       console.warn(`! ${c.id}: нема уличне мреже; територије се не цртају `
         + `(покрените: python data-pipeline/territories.py --city ${c.id} --refresh и комитујте network.json).`);
     } else if (scopeRaw !== null && hasCapitals) {
