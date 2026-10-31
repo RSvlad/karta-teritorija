@@ -15,6 +15,7 @@ Input  data-pipeline/work/<city>/territories-input.json (git-ignored, written by
                 "from": "Јанка Веселиновића", "to": "Железничка"}, ...]}
   "from"/"to" are optional cross streets: only the part of the street between them is a barrier.
   Give both or neither. A missing "capital" is reported, not guessed.
+  data-pipeline/work/<city>/overrides/<territory id>.geojson (from the Sheet's "Границе" tab) or
   data-pipeline/overrides/<city>/<territory id>.geojson, when present, replaces the automatic border.
 Output data-pipeline/work/<city>/territories.json   internal streets and diagnostics (for report.py, #9)
        public/data/<city>.territories.geojson       territory polygons (WGS84)
@@ -614,7 +615,10 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
 
     overrides = {}
     for tid in seeds:
-        path = OVERRIDES_DIR / city_id / f"{tid}.geojson"
+        # The Sheet's "Границе" tab (written by the build into work/, git-ignored) wins over committed files.
+        path = WORK_DIR / city_id / "overrides" / f"{tid}.geojson"
+        if not path.exists():
+            path = OVERRIDES_DIR / city_id / f"{tid}.geojson"
         if path.exists():
             overrides[tid] = gpd.GeoSeries([load_override(path)], crs="EPSG:4326").to_crs(metric).iloc[0]
 

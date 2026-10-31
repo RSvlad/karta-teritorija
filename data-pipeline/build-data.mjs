@@ -20,6 +20,7 @@ import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { loadOsmOnlyCities } from './lib/osm-only.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
+import { parseBoundaries, writeBoundaries } from './lib/boundaries.mjs';
 import { buildRulesInput, buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
 
 const OUT_DIR = 'public/data';
@@ -92,11 +93,12 @@ let failed = false;
 
 for (const c of cities) {
   try {
-    const [territoriesRaw, rulesRaw, placesRaw, scopeRaw] = await Promise.all([
+    const [territoriesRaw, rulesRaw, placesRaw, scopeRaw, boundsRaw] = await Promise.all([
       fetchSheet(token, c.sheetId, 'Територије'),
       fetchSheet(token, c.sheetId, 'Правила'),
       fetchSheet(token, c.sheetId, 'Тачке', { optional: true }),
       fetchSheet(token, c.sheetId, 'Обим', { optional: true }),
+      fetchSheet(token, c.sheetId, 'Границе', { optional: true }),
     ]);
     // `updated` drives the stale-data warning (#17), so it must be when the Sheet was last edited, not when
     // this build ran: otherwise every deploy would make neglected data look fresh.
@@ -140,7 +142,8 @@ for (const c of cities) {
     } else {
       drawing = buildRulesInput(data);
     }
-    written.push({ id: c.id, name: c.name, data, drawing });
+    const boundaries = parseBoundaries(boundsRaw, new Set(data.territories.map((t) => t.id)));
+    written.push({ id: c.id, name: c.name, data, drawing, boundaries });
   } catch (e) {
     failed = true;
     console.error(`\n✖ ${c.id}: ${e.message}`);
@@ -173,9 +176,11 @@ console.log(`✔ подаци из Sheet-а: ${written.map((w) => w.id).join(', 
 // other bad Sheet; a city that cannot be drawn at all (warned above) just has no borders.
 const python = process.env.PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3');
 let drawFailed = false;
-for (const { id, drawing } of written) {
+for (const { id, drawing, boundaries } of written) {
   if (!drawing) continue;
   writeTerritoriesInput(id, drawing);
+  const hand = writeBoundaries(id, boundaries);
+  if (hand) console.log(`✔ ${id}: ручних граница из листа „Границе“: ${hand}`);
   const run = spawnSync(python, ['data-pipeline/territories.py', '--city', id], {
     stdio: 'inherit',
     env: { ...process.env, PYTHONUTF8: '1' },
