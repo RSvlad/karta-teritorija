@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
-import type { Assignment, CityData, HouseNumber, Place, Resolution, Resolver, Street } from '../resolver';
+import type { Assignment, CityData, HouseNumber, Place, Resolution, Resolver, Street, TerritoryStreet } from '../resolver';
 import { createSearch, hitId, hitName } from '../search/search';
 import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
@@ -503,6 +503,7 @@ function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: 
   if (!territory) return null;
   const capital = resolver.capitalOf(territory.id);
   const points = resolver.places.filter((p) => p.territoryId === territory.id && p.kind !== 'capital');
+  const streets = resolver.streetsOf(territory.id);
   const title = `Територија ${territory.id} „${territory.name}“ · ${city}`;
   const people = territory.defaults.deputy
     ? `${territory.defaults.primary} (заменик: ${territory.defaults.deputy})`
@@ -530,9 +531,34 @@ function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: 
           </ul>
         </>
       )}
+      {streets.length > 0 && (
+        <>
+          <h2>Улице</h2>
+          <ul class={`plain street-list${streets.length > 30 ? ' dense' : ''}`}>
+            {streets.map((s) => <li key={s.street.id}><TerritoryStreetLine item={s} city={city} /></li>)}
+          </ul>
+        </>
+      )}
       <p class="print-only">Ажурирано: {updated}</p>
       <ShareBar key={text} title={title} text={text} />
     </article>
+  );
+}
+
+/** One street of a territory card: the name, then the number ranges the territory owns (none = the whole street). */
+function TerritoryStreetLine({ item, city }: { item: TerritoryStreet; city: string }) {
+  const { street, segments, rest } = item;
+  const parts = [
+    ...segments.map((r) => `${formatRange(r)}${r.assignee ? ` (${r.assignee})` : ''}`),
+    ...(rest ? ['остали бројеви'] : []),
+  ];
+  return (
+    <>
+      {street.name}
+      {/* The settlement only tells streets apart when it is not the city itself. */}
+      {street.settlement && street.settlement !== city && <span class="muted"> ({street.settlement})</span>}
+      {parts.length > 0 && <span class="muted"> · {parts.join('; ')}</span>}
+    </>
   );
 }
 
@@ -893,6 +919,27 @@ async function copyText(text: string): Promise<boolean> {
   }
 }
 
+/**
+ * Prints the card the button belongs to. The card is marked for the duration of the print dialog and the print
+ * stylesheet hides everything else, so a card in the map panel prints as alone as one in the search results.
+ */
+function printCard(button: HTMLElement): void {
+  const card = button.closest<HTMLElement>('.card');
+  if (!card) {
+    window.print();
+    return;
+  }
+  const clear = () => {
+    card.classList.remove('print-target');
+    document.body.classList.remove('printing');
+    window.removeEventListener('afterprint', clear);
+  };
+  card.classList.add('print-target');
+  document.body.classList.add('printing');
+  window.addEventListener('afterprint', clear); // not cleared right after print(): on some phones it returns before the dialog opens
+  window.print();
+}
+
 /** "Подели" uses the Web Share API and falls back to copying text and link; "Копирај" copies the result text; "Штампај" prints the card (print styles hide everything else). */
 function ShareBar({ title, text }: { title: string; text: string }) {
   const [note, setNote] = useState<string | null>(null);
@@ -917,7 +964,7 @@ function ShareBar({ title, text }: { title: string; text: string }) {
     <div class="actions">
       <button type="button" class="button" onClick={share}>Подели</button>
       <button type="button" class="button secondary" onClick={copy}>Копирај</button>
-      <button type="button" class="button secondary" onClick={() => window.print()}>Штампај</button>
+      <button type="button" class="button secondary" onClick={(e) => printCard(e.currentTarget)}>Штампај</button>
       {note && <span class="muted" role="status">{note}</span>}
     </div>
   );

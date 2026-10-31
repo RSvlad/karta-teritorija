@@ -1,5 +1,5 @@
 import type {
-  Assignment, CityData, HouseNumber, Parity, Place, Resolution, Rule, Street, Territory,
+  Assignment, CityData, HouseNumber, Parity, Place, Resolution, Rule, Street, Territory, TerritoryStreet,
 } from './types';
 
 export class DataError extends Error {
@@ -90,6 +90,24 @@ export function createResolver(data: CityData) {
     /** The meeting place of a territory, if the data has one. */
     capitalOf(territoryId: string): Place | undefined {
       return capitals.get(territoryId);
+    },
+
+    /**
+     * Streets of a territory for its printed card, by name: streets it owns by rules (with the ranges)
+     * and streets lying inside it. `rest` = it also owns the numbers no rule covers (a street inside it that has rules).
+     */
+    streetsOf(territoryId: string): TerritoryStreet[] {
+      const found = new Map<string, TerritoryStreet>();
+      for (const [streetId, rules] of rulesByStreet) {
+        const own = rules.filter((r) => r.territoryId === territoryId).sort(bySegment);
+        if (own.length) found.set(streetId, { street: streets.get(streetId)!, segments: own, rest: internal.get(streetId) === territoryId });
+      }
+      for (const [streetId, owner] of internal) {
+        if (owner === territoryId && !found.has(streetId)) {
+          found.set(streetId, { street: streets.get(streetId)!, segments: [], rest: false });
+        }
+      }
+      return [...found.values()].sort((a, b) => a.street.name.localeCompare(b.street.name, 'sr'));
     },
 
     resolve(streetId: string, house: HouseNumber | null): Resolution {
