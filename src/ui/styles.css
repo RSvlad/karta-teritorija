@@ -59,14 +59,20 @@ button.button { border: 1px solid var(--accent); font: inherit; cursor: pointer;
 footer { margin-top: 2rem; font-size: .875rem; }
 .print-only { display: none; }
 
-/* Print: only the result card on one A4 page, black on white, no controls.
-   Colour is always paired with the territory name, so the page reads in black and white. */
+/* Print: only one card on one A4 page, black on white, no controls.
+   Colour is always paired with the territory name, so the page reads in black and white.
+   With the "Штампај" button the card is marked .print-target (body.printing) and everything else is hidden;
+   with plain Ctrl+P only the search result is printed. */
 @page { size: A4; margin: 15mm; }
 @media print {
   html, body { background: #fff; color: #000; font-size: 12pt; }
   main { max-width: none; padding: 0; }
-  /* Everything in <main> except the result section (title, city and street fields, footer). */
-  main > :not(.result) { display: none; }
+  body:not(.printing) main > :not(.result) { display: none; }
+  /* Hides all but the card, the elements that contain it and its own content. */
+  body.printing :not(.print-target):not(:has(.print-target)):not(.print-target *) { display: none !important; }
+  /* The containers of a card in the map panel lose their screen layout (bottom sheet, offset panel, grid). */
+  body.printing :has(.print-target) { position: static; display: block; width: auto; max-width: none; height: auto; max-height: none;
+    margin: 0; padding: 0; transform: none; overflow: visible; background: none; border: 0; box-shadow: none; }
   .result { margin: 0; }
   .card { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: #000; break-inside: avoid; }
   .card-title { font-size: 18pt; }
@@ -76,6 +82,10 @@ footer { margin-top: 2rem; font-size: .875rem; }
   .warn { background: none; color: #000; border: 1px solid #000; }
   .actions, .button { display: none; }
   .print-only { display: block; margin-top: 1rem; font-size: 10pt; }
+  /* Street list of a territory: in columns so a whole territory fits one page. */
+  .street-list { column-count: 2; column-gap: 1.5rem; font-size: 11pt; }
+  .street-list.dense { column-count: 3; column-gap: 1rem; font-size: 9pt; }
+  .street-list li { break-inside: avoid; margin: .15rem 0; }
 }
 
 /* Map. The basemap is a fixed light style, so overlays on it use fixed colours in both themes. */

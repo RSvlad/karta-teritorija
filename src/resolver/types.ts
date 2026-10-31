@@ -76,6 +76,13 @@ export interface HouseNumber {
   sub: number | null;
 }
 
+/** A street on a territory's card. No `segments` = the whole street; `rest` = also the numbers no rule covers. */
+export interface TerritoryStreet {
+  street: Street;
+  segments: Rule[];
+  rest: boolean;
+}
+
 export interface Assignment {
   territory: Territory;
   people: People;
