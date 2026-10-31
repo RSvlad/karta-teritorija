@@ -1,0 +1,4 @@
+{"type":"FeatureCollection","features":[
+{"type":"Feature","properties":{"id":"14","source":"demo"},"geometry":{"type":"Polygon","coordinates":[[[19.82,45.252],[19.855,45.252],[19.855,45.262],[19.82,45.262],[19.82,45.252]]]}},
+{"type":"Feature","properties":{"id":"15","source":"demo"},"geometry":{"type":"Polygon","coordinates":[[[19.82,45.238],[19.855,45.238],[19.855,45.252],[19.82,45.252],[19.82,45.238]]]}}
+]}

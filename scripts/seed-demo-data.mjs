@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, copyFileSync } from 'node:fs';
 const seeds = [
   ['fixtures/demo-cities.json', 'public/data/cities.json'],
   ['fixtures/demo-novi-sad.json', 'public/data/novi-sad.json'],
+  ['fixtures/demo-novi-sad.territories.geojson', 'public/data/novi-sad.territories.geojson'],
 ];
 
 for (const [source, target] of seeds) {

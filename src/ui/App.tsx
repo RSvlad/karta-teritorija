@@ -8,6 +8,8 @@ import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
 import { useRoute } from './route';
 import type { Route } from './route';
+// Type only: MapView (and MapLibre with it) is loaded on demand by MapSection.
+import type { MapSelection } from './MapView';
 
 const CITY_KEY = 'moj-paroh:city';
 
@@ -294,6 +296,7 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
           />
         ) : null}
       </section>
+      <MapSection key={cityId} cityId={cityId} data={data} resolver={resolver} />
       <footer class="muted">Ажурирано: {data.updated}</footer>
     </>
   );
@@ -428,6 +431,134 @@ function PlaceCard({ place, resolver, city, updated }: { place: Place; resolver:
       <p class="print-only">Ажурирано: {updated}</p>
       <ShareBar key={text} title={title} text={text} />
     </article>
+  );
+}
+
+/** Card of a territory picked on the map: who is responsible, the capital and the other points. */
+function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: string; resolver: Resolver; city: string; updated: string }) {
+  const territory = resolver.territories.get(territoryId);
+  if (!territory) return null;
+  const capital = resolver.capitalOf(territory.id);
+  const points = resolver.places.filter((p) => p.territoryId === territory.id && p.kind !== 'capital');
+  const title = `Територија ${territory.id} „${territory.name}“ · ${city}`;
+  const people = territory.defaults.deputy
+    ? `${territory.defaults.primary} (заменик: ${territory.defaults.deputy})`
+    : territory.defaults.primary;
+  const text = [
+    title,
+    people,
+    ...(capital ? [capitalText(capital, false)] : []),
+    ...points.map((p) => `📍 ${p.name}, ${p.address}`),
+  ].join('\n');
+  return (
+    <article class="card">
+      <h2 class="card-title">
+        <span class="swatch" style={{ background: territory.color }} aria-hidden="true" />
+        {title}
+      </h2>
+      <StaleWarning updated={updated} />
+      <p><strong>{territory.defaults.primary}</strong>{territory.defaults.deputy && <span class="muted"> · заменик: {territory.defaults.deputy}</span>}</p>
+      {capital && <CapitalLine place={capital} withTerritory={false} />}
+      {points.length > 0 && (
+        <>
+          <h2>Тачке</h2>
+          <ul class="plain">
+            {points.map((p) => <li key={p.id}><span aria-hidden="true">📍 </span>{p.name} <span class="muted">· {p.address}</span></li>)}
+          </ul>
+        </>
+      )}
+      <p class="print-only">Ажурирано: {updated}</p>
+      <ShareBar key={text} title={title} text={text} />
+    </article>
+  );
+}
+
+/**
+ * Map of the city's territories. MapLibre is a separate chunk that is fetched only when the map is opened,
+ * so the search page stays small. The territories are also listed as buttons: the map canvas is not keyboard-friendly.
+ * A click on the map opens the same cards as the search (bottom sheet on a phone, side panel on a desktop).
+ */
+function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData; resolver: Resolver }) {
+  const [open, setOpen] = useState(false);
+  const [View, setView] = useState<typeof import('./MapView').default | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [selected, setSelected] = useState<MapSelection | null>(null);
+  const [showPoints, setShowPoints] = useState(true);
+
+  useEffect(() => {
+    if (!open || View) return;
+    setLoadFailed(false);
+    let alive = true;
+    // setView(() => ...): the module's default export is a function and must not be treated as an updater.
+    import('./MapView').then(
+      (m) => { if (alive) setView(() => m.default); },
+      () => { if (alive) setLoadFailed(true); },
+    );
+    return () => { alive = false; };
+  }, [open]);
+
+  const place = selected?.kind === 'place' ? resolver.places.find((p) => p.id === selected.id) : undefined;
+  const hasPoints = resolver.places.some((p) => p.kind !== 'capital');
+  const territories = [...resolver.territories.values()];
+
+  return (
+    <section class="map-section" aria-label="Мапа територија">
+      <button
+        type="button"
+        class="button secondary"
+        aria-expanded={open}
+        aria-controls="map-panel"
+        onClick={() => { setOpen(!open); setSelected(null); }}
+      >
+        {open ? 'Сакриј мапу' : 'Прикажи мапу'}
+      </button>
+      {open && (
+        <div id="map-panel" class="map-panel">
+          <div class="map-tools">
+            {hasPoints && (
+              <label class="inline">
+                <input type="checkbox" checked={showPoints} onChange={(e) => setShowPoints(e.currentTarget.checked)} />
+                Прикажи остале тачке
+              </label>
+            )}
+            <ul class="plain territory-list" aria-label="Територије">
+              {territories.map((t) => (
+                <li key={t.id}>
+                  <button
+                    type="button"
+                    class="chip"
+                    aria-pressed={selected?.kind === 'territory' && selected.id === t.id}
+                    onClick={() => setSelected(selected?.kind === 'territory' && selected.id === t.id ? null : { kind: 'territory', id: t.id })}
+                  >
+                    <span class="swatch" style={{ background: t.color }} aria-hidden="true" />
+                    {t.id} {t.name}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div class="map-layout">
+            {View ? (
+              <View cityId={cityId} data={data} resolver={resolver} selected={selected} showPoints={showPoints} onSelect={setSelected} />
+            ) : loadFailed ? (
+              <p class="error" role="alert">Мапа тренутно није доступна.</p>
+            ) : (
+              <p class="muted" role="status">Учитавање мапе…</p>
+            )}
+            {selected && (
+              <aside class="map-sheet" aria-label="Детаљи изабраног на мапи">
+                <button type="button" class="button secondary close" onClick={() => setSelected(null)}>Затвори</button>
+                {place ? (
+                  <PlaceCard place={place} resolver={resolver} city={data.name} updated={data.updated} />
+                ) : (
+                  <TerritoryCard territoryId={selected.id} resolver={resolver} city={data.name} updated={data.updated} />
+                )}
+              </aside>
+            )}
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
