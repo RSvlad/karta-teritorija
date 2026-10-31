@@ -35,6 +35,23 @@ export function buildTerritoriesInput(data, scopeRaw) {
   return { input: { territories, scope }, geocodedCapitals: capitals.size };
 }
 
+/**
+ * Input for drawing from the streets alone (no capitals, no scope tab): every territory plus, for each street
+ * that has rules, the territories those rules point to. territories.py treats a street whose rules all point to
+ * one territory as that territory's, and a street split between territories as a border.
+ */
+export function buildRulesInput(data) {
+  const owners = new Map();
+  for (const r of data.rules) {
+    if (!owners.has(r.streetId)) owners.set(r.streetId, new Set());
+    owners.get(r.streetId).add(r.territoryId);
+  }
+  const rules = data.streets
+    .filter((s) => owners.has(s.id))
+    .map((s) => ({ street: s.name, settlement: s.settlement ?? '', territories: [...owners.get(s.id)].sort() }));
+  return { territories: data.territories.map((t) => ({ id: t.id })), scope: [], rules };
+}
+
 /** data-pipeline/work/<city>/territories-input.json (git-ignored: it comes from the private Sheet). */
 export function writeTerritoriesInput(city, input, dir = WORK_DIR) {
   const out = `${dir}/${city}/territories-input.json`;
