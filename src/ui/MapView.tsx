@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CityData, Place, Resolver } from '../resolver';
 import { containsPoint, polygonsOf } from '../geo/geo';
 import type { Geometry } from '../geo/geo';
+import { tx, useScript } from './prefs';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -73,6 +74,11 @@ interface PlaceMarker {
   el: HTMLButtonElement;
 }
 
+/** Name of a marker for assistive technology, in the chosen script. */
+function markerLabel(place: Place): string {
+  return tx(`${place.kind === 'capital' ? 'Престоница' : 'Тачка'}: ${place.name}`);
+}
+
 interface Props {
   cityId: string;
   data: CityData;
@@ -95,7 +101,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<PlaceMarker[]>([]);
-  const labelsRef = useRef<{ id: string; el: HTMLElement }[]>([]);
+  const labelsRef = useRef<{ id: string; text: string; el: HTMLElement }[]>([]);
   const featuresRef = useRef<{ id: string; geometry: Geometry }[]>([]);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const boundsRef = useRef(new Map<string, Bounds>());
@@ -181,9 +187,9 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
         const el = document.createElement('div');
         el.className = 'map-label';
         el.setAttribute('aria-hidden', 'true');
-        el.textContent = `${t.id} ${t.name}`;
+        el.textContent = tx(`${t.id} ${t.name}`);
         new maplibregl.Marker({ element: el }).setLngLat(spot).addTo(map);
-        labelsRef.current.push({ id: t.id, el });
+        labelsRef.current.push({ id: t.id, text: `${t.id} ${t.name}`, el });
       }
 
       // Capital = star, other points = smaller dot. Places the pipeline could not geocode have no marker.
@@ -195,7 +201,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
         el.className = `map-marker ${place.kind === 'capital' ? 'capital' : 'point'}`;
         el.textContent = place.kind === 'capital' ? '★' : '';
         el.style.setProperty('--tc', resolver.territories.get(place.territoryId)?.color ?? UNASSIGNED_COLOR);
-        el.setAttribute('aria-label', `${place.kind === 'capital' ? 'Престоница' : 'Тачка'}: ${place.name}`);
+        el.setAttribute('aria-label', markerLabel(place));
         el.addEventListener('click', (ev) => {
           ev.stopPropagation(); // not a click on the territory underneath
           selectRef.current({ kind: 'place', id: place.id });
@@ -216,6 +222,14 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
       boundsRef.current.clear();
     };
   }, [cityId, data]);
+
+  // Labels and marker names are plain DOM, drawn once: redo their text when the script is switched.
+  const script = useScript();
+  useEffect(() => {
+    for (const { text, el } of labelsRef.current) el.textContent = tx(text);
+    for (const { place, el } of markersRef.current) el.setAttribute('aria-label', markerLabel(place));
+    userMarkerRef.current?.getElement().setAttribute('aria-label', tx('Ваша локација'));
+  }, [script, status.kind]);
 
   // Layer switch for the smaller markers, and the territory filter for everything on the map.
   useEffect(() => {
@@ -241,7 +255,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
     const el = document.createElement('div');
     el.className = 'map-me';
     el.setAttribute('role', 'img');
-    el.setAttribute('aria-label', 'Ваша локација');
+    el.setAttribute('aria-label', tx('Ваша локација'));
     userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([userPoint.lng, userPoint.lat]).addTo(map);
     const b = hit && boundsRef.current.get(hit.id);
     if (b) {
