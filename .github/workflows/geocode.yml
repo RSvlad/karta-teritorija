@@ -1,0 +1,57 @@
+name: Geocode places
+
+# One-off / on demand: geocodes the Sheet's "Тачке" addresses (capitals and other points) and pushes
+# data-pipeline/cache/<city>/geocode-cache.json to a branch, to be merged by a pull request.
+# The cache is committed on purpose: the normal build never calls a geocoder (see README, "Геокодирање тачака").
+# Run it again after adding places; only addresses missing from the cache are looked up.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  geocode:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: data-pipeline/requirements.txt
+      - run: pip install -r data-pipeline/requirements.txt
+
+      # Reads the private Sheet and writes data-pipeline/work/<city>/places-input.json (git-ignored).
+      - run: node data-pipeline/build-data.mjs
+        env:
+          GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
+          SHEETS_CITIES: ${{ secrets.SHEETS_CITIES }}
+          PIPELINE_REQUIRED: '1'
+
+      # geocode.py exits 1 when some address failed; the ones that worked are still cached.
+      - name: Geocode
+        run: |
+          for dir in data-pipeline/work/*/; do
+            city=$(basename "$dir")
+            [ -f "$dir/places-input.json" ] || continue
+            python data-pipeline/geocode.py --city "$city" || echo "::warning::$city: нису све адресе геокодиране"
+          done
+
+      - name: Push the cache to a branch
+        run: |
+          if git status --porcelain data-pipeline/cache | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git checkout -B chore/geocode-cache
+            git add data-pipeline/cache
+            git commit -m "Геокодирање тачака: geocode-cache.json"
+            git push --force origin chore/geocode-cache
+          else
+            echo "Кеш је без измена."
+          fi

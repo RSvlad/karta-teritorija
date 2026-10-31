@@ -46,6 +46,16 @@ function boundsOf(features: Feature[]): Bounds | null {
   return b;
 }
 
+/** Without borders the map is framed by the points that have coordinates. */
+function boundsOfPlaces(places: readonly Place[]): Bounds | null {
+  let b: Bounds | null = null;
+  for (const { lat, lng } of places) {
+    if (lat === undefined || lng === undefined) continue;
+    b = b ? [Math.min(b[0], lng), Math.min(b[1], lat), Math.max(b[2], lng), Math.max(b[3], lat)] : [lng, lat, lng, lat];
+  }
+  return b;
+}
+
 /** Centroid of the largest outer ring: a stable spot for the territory label. */
 function labelPoint(g: Geometry): [number, number] | null {
   let best: { area: number; point: [number, number] } | null = null;
@@ -111,6 +121,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
   const locatedRef = useRef(onLocated);
   locatedRef.current = onLocated;
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
+  const [noBorders, setNoBorders] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -118,17 +129,18 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
     setStatus({ kind: 'loading' });
 
     (async () => {
-      let collection: Collection;
+      // A city whose borders are not drawn yet (404) still gets the basemap and its points; any other failure is an error.
+      let collection: Collection = { type: 'FeatureCollection', features: [] };
       try {
         const r = await fetch(`data/${encodeURIComponent(cityId)}.territories.geojson`);
-        if (r.status === 404) throw new Error('Мапа за овај град још није доступна.');
-        if (!r.ok) throw new Error('Мапа тренутно није доступна.');
-        collection = (await r.json()) as Collection;
-      } catch (e) {
-        if (!cancelled) setStatus({ kind: 'error', message: e instanceof Error && e.message.startsWith('Мапа') ? e.message : 'Мапа тренутно није доступна.' });
+        if (r.ok) collection = (await r.json()) as Collection;
+        else if (r.status !== 404) throw new Error('Мапа тренутно није доступна.');
+      } catch {
+        if (!cancelled) setStatus({ kind: 'error', message: 'Мапа тренутно није доступна.' });
         return;
       }
       if (cancelled || !box.current) return;
+      setNoBorders(collection.features.length === 0);
 
       // Colours and names come from the Sheet data; a polygon without a known territory is "unassigned" grey.
       const features = collection.features.map((f) => {
@@ -136,13 +148,13 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
         const territory = resolver.territories.get(id);
         return { ...f, properties: { id, color: territory?.color ?? UNASSIGNED_COLOR, assigned: !!territory } };
       });
-      const bounds = boundsOf(features);
+      const bounds = boundsOf(features) ?? boundsOfPlaces(resolver.places);
       featuresRef.current = features.filter((f) => f.properties.assigned).map((f) => ({ id: f.properties.id, geometry: f.geometry }));
 
       map = new maplibregl.Map({
         container: box.current,
         style: STYLE_URL,
-        ...(bounds ? { bounds, fitBoundsOptions: { padding: 40, animate: false } } : FALLBACK_VIEW),
+        ...(bounds ? { bounds, fitBoundsOptions: { padding: 40, animate: false, maxZoom: 15 } } : FALLBACK_VIEW),
         attributionControl: false,
         cooperativeGestures: false,
       });
@@ -266,7 +278,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
     } else {
       map.easeTo({ center: [userPoint.lng, userPoint.lat], zoom: Math.max(map.getZoom(), 13), duration: reducedMotion() ? 0 : 400 });
     }
-    locatedRef.current(hit?.id ?? null, true);
+    locatedRef.current(hit?.id ?? null, featuresRef.current.length > 0);
   }, [userPoint, status.kind]);
 
   // Selection -> highlight and camera.
@@ -292,6 +304,9 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
       <div ref={box} class="map-canvas" />
       {status.kind === 'loading' && <p class="map-status muted" role="status">Учитавање мапе…</p>}
       {status.kind === 'error' && <p class="map-status error" role="alert">{status.message}</p>}
+      {status.kind === 'ready' && noBorders && (
+        <p class="map-status muted note" role="status">Границе територија још нису нацртане.</p>
+      )}
     </div>
   );
 }

@@ -34,12 +34,21 @@ const COLUMNS = {
     address: ['адреса'],
     note: ['напомена'],
   },
+  // The "Обим" tab: streets that bound a territory (barriers for territories.py), see lib/territories-input.mjs.
+  scope: {
+    territory: ['територија'],
+    street: ['улица'],
+    settlement: ['насеље', 'место'],
+    from: ['од'],
+    to: ['до'],
+  },
 };
 
 const REQUIRED = {
   territories: ['id', 'name', 'color', 'primary'],
   rules: ['street', 'territory'],
   places: ['name', 'territory', 'address'],
+  scope: ['territory', 'street'],
 };
 
 const KIND = new Map([
