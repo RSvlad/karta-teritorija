@@ -66,3 +66,50 @@ footer { margin-top: 2rem; font-size: .875rem; }
   .actions, .button { display: none; }
   .print-only { display: block; margin-top: 1rem; font-size: 10pt; }
 }
+
+/* Map. The basemap is a fixed light style, so overlays on it use fixed colours in both themes. */
+.map-section { margin-top: 1.5rem; }
+.map-panel { margin-top: 1rem; }
+.map-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: .75rem; }
+label.inline { display: flex; align-items: center; gap: .5rem; margin: 0; font-weight: 400; min-height: 44px; }
+label.inline input { width: auto; min-height: 0; }
+ul.plain { list-style: none; margin: 0; padding: 0; }
+.card ul.plain li { margin: .25rem 0; }
+.territory-list { display: flex; flex-wrap: wrap; gap: .5rem; }
+.chip { min-height: 44px; padding: .4rem .75rem; font: inherit; color: inherit; background: var(--card);
+  border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
+/* Selected is shown by a thick outline, not by colour alone. */
+.chip[aria-pressed="true"] { border-color: var(--fg); outline: 2px solid var(--fg); outline-offset: -3px; font-weight: 700; }
+.chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.map-canvas-wrap { position: relative; min-height: 22rem; height: 60vh; max-height: 40rem;
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+/* More specific than MapLibre's own ".maplibregl-map { position: relative }", which would collapse the canvas to zero height. */
+.map-canvas-wrap > .map-canvas { position: absolute; inset: 0; }
+.map-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 1rem; text-align: center; }
+.map-label { padding: 0 .25rem; color: #1b1b1b; font: 600 12px/1.2 system-ui, sans-serif; white-space: nowrap; pointer-events: none;
+  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
+.map-marker { display: grid; place-items: center; padding: 0; color: #1b1b1b; background: #fff;
+  border: 3px solid var(--tc, #9e9e9e); border-radius: 50%; cursor: pointer; font: 700 16px/1 system-ui, sans-serif; }
+.map-marker.capital { width: 32px; height: 32px; }
+.map-marker.point { width: 16px; height: 16px; border-width: 4px; }
+/* Keeps a 44px touch target around the small dots. */
+.map-marker::after { content: ''; position: absolute; inset: -14px; }
+.map-marker.capital::after { inset: -6px; }
+.map-marker[hidden] { display: none; }
+.map-marker[aria-pressed="true"] { outline: 3px solid #1b1b1b; outline-offset: 2px; }
+.map-marker:focus-visible { outline: 3px solid #1b1b1b; outline-offset: 2px; }
+.map-sheet .card { margin-top: .5rem; }
+.map-sheet .close { float: right; margin-top: 0; }
+
+/* Phone: the card is a bottom sheet over the map. */
+@media (max-width: 47.99rem) {
+  .map-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 55vh; overflow-y: auto;
+    padding: .5rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px)); background: var(--bg);
+    border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .2); }
+}
+/* Desktop: map and a side panel, wider than the search column. */
+@media (min-width: 48rem) {
+  .map-panel { position: relative; left: 50%; width: min(64rem, calc(100vw - 2rem)); transform: translateX(-50%); }
+  .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
+  .map-layout:not(:has(.map-sheet)) { grid-template-columns: minmax(0, 1fr); }
+}
