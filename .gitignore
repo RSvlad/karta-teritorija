@@ -7,3 +7,8 @@ data-pipeline/cache/osmnx/
 __pycache__/
 # Per-run inputs/outputs of territories.py (may contain Sheet data).
 data-pipeline/work/
+
+# Test and Lighthouse output.
+test-results/
+playwright-report/
+.lighthouseci/

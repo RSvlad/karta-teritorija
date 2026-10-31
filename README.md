@@ -4,6 +4,8 @@
 
 Workflow `.github/workflows/deploy.yml` на сваки push на `main` покреће `typecheck`, `test` и `vite build`, па објављује `dist/` на GitHub Pages. Pull request-ови пролазе исте провере, али се не објављују. Падање типова или тестова прекида деплој.
 
+Посебан посао `quality` гради апликацију од демо података (никад од Sheet-а) и покреће Е2Е тестове (Playwright: претрага, WCAG AA, мете од 44 px, одзив < 200 ms на успореном процесору) и Lighthouse CI (брзина и приступачност ≥ 90, `lighthouserc.json`). Деплој чека и тај посао. Локално: `npm run build` без `GOOGLE_SERVICE_ACCOUNT`/`SHEETS_CITIES`, једном `npx playwright install chromium`, па `npm run test:e2e` и `npm run lighthouse`.
+
 Генерисани JSON (`public/data/`) је у `.gitignore` и иде директно у артефакт за Pages; никада се не комитује.
 
 ### Једнократно подешавање
