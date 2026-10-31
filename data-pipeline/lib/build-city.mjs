@@ -27,12 +27,26 @@ const COLUMNS = {
     assignee: ['задужен', 'задужени'],
     note: ['напомена'],
   },
+  places: {
+    name: ['назив', 'име'],
+    territory: ['територија'],
+    kind: ['врста', 'тип'],
+    address: ['адреса'],
+    note: ['напомена'],
+  },
 };
 
 const REQUIRED = {
   territories: ['id', 'name', 'color', 'primary'],
   rules: ['street', 'territory'],
+  places: ['name', 'territory', 'address'],
 };
+
+const KIND = new Map([
+  ['престоница', 'capital'], ['prestonica', 'capital'], ['capital', 'capital'],
+  ['сабирна', 'collector'], ['sabirna', 'collector'], ['collector', 'collector'],
+  ['', 'other'], ['остало', 'other'], ['ostalo', 'other'], ['other', 'other'],
+]);
 
 const PARITY = new Map([
   ['', 'all'], ['сви', 'all'], ['сви бројеви', 'all'], ['svi', 'all'], ['all', 'all'],
@@ -99,10 +113,13 @@ function parseBound(text, where, problems) {
   return Number(text);
 }
 
-export function buildCity({ city, name, reportEmail, updated, territoriesRaw, rulesRaw }) {
+export function buildCity({ city, name, reportEmail, updated, territoriesRaw, rulesRaw, placesRaw = null }) {
   const problems = [];
   const territoryRows = readTable('territories', 'Територије', territoriesRaw, problems);
   const ruleRows = readTable('rules', 'Правила', rulesRaw, problems);
+  // The "Тачке" tab is optional. Without it the city simply has no places; once it exists,
+  // every territory must have exactly one capital.
+  const placeRows = placesRaw === null ? null : readTable('places', 'Тачке', placesRaw, problems);
 
   const territories = [];
   const territoryIds = new Set();
@@ -200,6 +217,8 @@ export function buildCity({ city, name, reportEmail, updated, territoriesRaw, ru
     streets.push({ id, name: s.name, ...(s.settlement && { settlement: s.settlement }) });
   }
 
+  const places = placeRows === null ? [] : buildPlaces(placeRows, territoryIds, territories, problems);
+
   if (problems.length) throw new PipelineError(problems);
 
   return {
@@ -212,5 +231,62 @@ export function buildCity({ city, name, reportEmail, updated, territoriesRaw, ru
     rules: rules.map(({ key, rule }) => ({ streetId: idByKey.get(key), ...rule })),
     // Filled by the territory-drawing step (#8); the Sheet only carries explicit rules.
     internal: [],
+    places,
   };
+}
+
+/**
+ * "Тачке" rows -> Place[] (no coordinates yet: those come from the geocode cache, see places.mjs).
+ * Exactly one capital per territory; ids depend on the name (plus territory when a name repeats),
+ * never on row order.
+ */
+function buildPlaces(rows, territoryIds, territories, problems) {
+  const checked = [];
+  const capitals = new Map();
+  for (const { row, values: v } of rows) {
+    const where = `Тачке, ред ${row}`;
+    if (!v.name) problems.push(`${where}: нема назива`);
+    if (!v.address) problems.push(`${where}: нема адресе`);
+    if (!v.territory) problems.push(`${where}: нема територије`);
+    else if (!territoryIds.has(v.territory)) problems.push(`${where}: непозната територија „${v.territory}“`);
+    const kind = KIND.get(v.kind.toLowerCase());
+    if (!kind) problems.push(`${where}: непозната врста „${v.kind}“ (престоница, сабирна или остало)`);
+    if (kind === 'capital' && v.territory) {
+      const prev = capitals.get(v.territory);
+      if (prev) problems.push(`${where}: територија „${v.territory}“ већ има престоницу (ред ${prev})`);
+      else capitals.set(v.territory, row);
+    }
+    checked.push({ row, v, kind: kind ?? 'other' });
+  }
+  for (const t of territories) {
+    if (!capitals.has(t.id)) problems.push(`Тачке: територија „${t.id}“ (${t.name}) нема престоницу`);
+  }
+
+  const nameCount = new Map();
+  for (const { v } of checked) nameCount.set(slug(v.name), (nameCount.get(slug(v.name)) ?? 0) + 1);
+  const used = new Map();
+  const places = [];
+  for (const { row, v, kind } of checked) {
+    if (!v.name || !v.address || !territoryIds.has(v.territory)) continue; // already reported
+    const base = slug(v.name);
+    const id = nameCount.get(base) > 1 ? `${base}-${slug(v.territory)}` : base;
+    if (!id) {
+      problems.push(`Тачке, ред ${row}: од назива „${v.name}“ се не може направити ид`);
+      continue;
+    }
+    if (used.has(id)) {
+      problems.push(`Тачке, ред ${row}: тачка „${v.name}“ у територији „${v.territory}“ се понавља (ред ${used.get(id)})`);
+      continue;
+    }
+    used.set(id, row);
+    places.push({
+      id,
+      name: v.name,
+      kind,
+      territoryId: v.territory,
+      address: v.address,
+      ...(v.note && { note: v.note }),
+    });
+  }
+  return places;
 }

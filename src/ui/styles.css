@@ -33,6 +33,13 @@ mark { background: none; color: inherit; font-weight: 700; text-decoration: unde
 .card p { margin: .25rem 0; }
 .swatch { display: inline-block; width: .9rem; height: .9rem; margin-right: .5rem; border-radius: 3px; vertical-align: -1px; }
 .warn { padding: .5rem .75rem; background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; }
+/* Capital (meeting place) row of the result card; the star is decoration, the word "Престоница" carries the meaning. */
+.capital { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--line); }
+.capital .actions { margin-top: .5rem; }
+.kind { display: inline-block; min-width: 1.5rem; }
+/* Visible to screen readers only (the suggestion's kind is also spoken, not just shown as an icon). */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .button { display: inline-block; min-height: 44px; padding: .6rem 1rem; color: var(--bg); background: var(--accent);
   border-radius: 8px; text-decoration: none; }
 button.button { border: 1px solid var(--accent); font: inherit; cursor: pointer; }

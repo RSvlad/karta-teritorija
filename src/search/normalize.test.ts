@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { normalizeText } from './normalize';
-import { createStreetSearch } from './streets';
+import { createSearch } from './search';
 
 describe('normalizeText', () => {
   it('maps Cyrillic, Latin and ASCII spellings to one form', () => {
@@ -27,13 +27,14 @@ describe('normalizeText', () => {
   });
 });
 
-describe('createStreetSearch', () => {
-  const search = createStreetSearch([
+describe('createSearch', () => {
+  const searchHits = createSearch([
     { id: 'a', name: 'Футошка', settlement: 'Нови Сад' },
     { id: 'b', name: 'Булевар ослобођења' },
     { id: 'c', name: 'Школска', settlement: 'Нови Сад' },
     { id: 'd', name: 'Школска', settlement: 'Петроварадин' },
   ]);
+  const search = (q: string) => searchHits(q).flatMap((h) => (h.kind === 'street' ? [h.street] : []));
 
   it('matches by prefix across scripts', () => {
     expect(search('fut').map((s) => s.id)).toEqual(['a']);

@@ -1,5 +1,5 @@
 import type {
-  Assignment, CityData, HouseNumber, Parity, Resolution, Rule, Street, Territory,
+  Assignment, CityData, HouseNumber, Parity, Place, Resolution, Rule, Street, Territory,
 } from './types';
 
 export class DataError extends Error {
@@ -61,6 +61,18 @@ export function createResolver(data: CityData) {
     if (internal.has(i.streetId)) problems.push(`унутрашња улица "${i.streetId}" је у више територија`);
     internal.set(i.streetId, i.territoryId);
   }
+  const places = data.places ?? [];
+  const placeIds = new Set<string>();
+  const capitals = new Map<string, Place>();
+  for (const p of places) {
+    if (placeIds.has(p.id)) problems.push(`тачка "${p.id}" се понавља`);
+    placeIds.add(p.id);
+    if (!territories.has(p.territoryId)) problems.push(`тачка "${p.id}": непозната територија "${p.territoryId}"`);
+    if (p.kind === 'capital') {
+      if (capitals.has(p.territoryId)) problems.push(`територија "${p.territoryId}" има више од једне престонице`);
+      capitals.set(p.territoryId, p);
+    }
+  }
   if (problems.length) throw new DataError(problems);
 
   const assignmentFor = (territory: Territory, rule?: Rule): Assignment => ({
@@ -72,7 +84,13 @@ export function createResolver(data: CityData) {
 
   return {
     streets: data.streets,
+    places,
     territories,
+
+    /** The meeting place of a territory, if the data has one. */
+    capitalOf(territoryId: string): Place | undefined {
+      return capitals.get(territoryId);
+    },
 
     resolve(streetId: string, house: HouseNumber | null): Resolution {
       const street = streets.get(streetId);
