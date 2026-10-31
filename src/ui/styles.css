@@ -113,3 +113,13 @@ ul.plain { list-style: none; margin: 0; padding: 0; }
   .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
   .map-layout:not(:has(.map-sheet)) { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* Map filters and "Where am I?" */
+.map-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.map-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem 1rem; margin-bottom: .75rem; }
+.map-filters label:not(.inline) { margin: 0; }
+.map-filters select { width: auto; min-width: 10rem; max-width: 100%; }
+.locate { margin-top: 1rem; }
+.locate .card { margin-top: 0; }
+.map-label[hidden] { display: none; }
+.map-me { width: 18px; height: 18px; background: #1a73e8; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #1a73e8, 0 1px 4px rgba(0,0,0,.4); }
