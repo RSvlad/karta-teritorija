@@ -9,6 +9,8 @@ import { daysLabel, staleAgeDays } from './freshness';
 import { formatDistance, nearest } from '../geo/geo';
 import { useRoute } from './route';
 import type { Route } from './route';
+import { nextTheme, setScript, setTheme, tx, useScript, useTheme } from './prefs';
+import type { Theme } from './prefs';
 // Type only: MapView (and MapLibre with it) is loaded on demand by MapSection.
 import type { MapSelection } from './MapView';
 
@@ -82,6 +84,8 @@ function initialCity(cities: CityRef[], linked?: string): string {
 }
 
 export function App() {
+  // Subscribed at the root: a change of script rebuilds the whole tree, which is when text is transliterated.
+  useScript();
   const cities = useRemote('cities', () => fetchJson<CityRef[]>('data/cities.json'));
   if (cities.status === 'loading') return <main><p class="muted" role="status">Учитавање…</p></main>;
   if (cities.status === 'error') return <main><p class="error" role="alert">{cities.message}</p></main>;
@@ -116,7 +120,10 @@ function Cities({ cities }: { cities: CityRef[] }) {
 
   return (
     <main>
-      <h1>Територије · {current.name}</h1>
+      <header class="top">
+        <h1>Територије · {current.name}</h1>
+        <Prefs />
+      </header>
       {!online && <p class="warn" role="status">Нисте на мрежи. Приказују се подаци сачувани на уређају.</p>}
       {cities.length > 1 && (
         <>
@@ -145,9 +152,35 @@ function Cities({ cities }: { cities: CityRef[] }) {
   );
 }
 
+const THEME_ICON: Record<Theme, string> = { auto: '◐', light: '☀', dark: '☾' };
+const THEME_LABEL: Record<Theme, string> = { auto: 'Тема: аутоматска', light: 'Тема: светла', dark: 'Тема: тамна' };
+
+/**
+ * Switches for the script and the colour theme. The script button names the other script in that script
+ * (translate={false} keeps it from being transliterated), so it can always be found.
+ */
+function Prefs() {
+  const script = useScript();
+  const theme = useTheme();
+  return (
+    <div class="prefs">
+      {script === 'cyr' ? (
+        <button type="button" class="button secondary" lang="sr-Latn" translate={false} onClick={() => setScript('lat')}>Latinica</button>
+      ) : (
+        <button type="button" class="button secondary" lang="sr-Cyrl" translate={false} onClick={() => setScript('cyr')}>Ћирилица</button>
+      )}
+      <button type="button" class="button secondary" onClick={() => setTheme(nextTheme(theme))}>
+        <span aria-hidden="true">{THEME_ICON[theme]} </span>
+        {THEME_LABEL[theme]}
+      </button>
+    </div>
+  );
+}
+
 /** Street name with the part matching the query marked (same Cyrillic/Latin folding as the search). */
 function Highlight({ text, query }: { text: string; query: string }) {
-  return <>{highlightParts(text, query).map((p, i) => (p.match ? <mark key={i}>{p.text}</mark> : p.text))}</>;
+  // Highlighted in the script that is shown, so a digraph (Љ → Lj) is never split between two parts.
+  return <>{highlightParts(tx(text), query).map((p, i) => (p.match ? <mark key={i}>{p.text}</mark> : p.text))}</>;
 }
 
 interface SearchProps {
@@ -162,7 +195,8 @@ interface SearchProps {
 function Search({ cityId, data, resolver, route, go }: SearchProps) {
   const search = useMemo(() => createSearch(data.streets, resolver.places), [data, resolver]);
   const linkedStreet = route?.street ? data.streets.find((s) => s.id === route.street) ?? null : null;
-  const [query, setQuery] = useState(linkedStreet?.name ?? '');
+  const script = useScript();
+  const [query, setQuery] = useState(linkedStreet ? tx(linkedStreet.name) : '');
   const [chosen, setChosen] = useState<Hit | null>(linkedStreet ? { kind: 'street', street: linkedStreet } : null);
   const [houseText, setHouseText] = useState(linkedStreet ? route?.house ?? '' : '');
   // Combobox state: highlighted option (-1 = none) and whether Escape has dismissed the list.
@@ -204,14 +238,19 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
       return;
     }
     setChosen(linked ? { kind: 'street', street: linked } : null);
-    setQuery(linked?.name ?? '');
+    setQuery(linked ? tx(linked.name) : '');
     setHouseText(linked ? route.house ?? '' : '');
     setActive(-1);
   }, [route?.street, route?.house]);
 
+  // A chosen name shown in the field follows the script; text the user typed is left as typed.
+  useEffect(() => {
+    if (chosen) setQuery(tx(hitName(chosen)));
+  }, [script]);
+
   const pick = (h: Hit) => {
     setChosen(h);
-    setQuery(hitName(h));
+    setQuery(tx(hitName(h)));
     setActive(-1);
   };
 
@@ -358,7 +397,7 @@ function reportLink(email: string, street: Street, house: HouseNumber | null, ci
     `Град: ${city}`,
   ];
   const subject = `Недодељена улица: ${street.name}`;
-  return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
+  return `mailto:${email}?subject=${encodeURIComponent(tx(subject))}&body=${encodeURIComponent(tx(lines.join('\n')))}`;
 }
 
 /** Directions in the user's maps app: by coordinates when known, else by the address text. */
@@ -858,19 +897,20 @@ async function copyText(text: string): Promise<boolean> {
 function ShareBar({ title, text }: { title: string; text: string }) {
   const [note, setNote] = useState<string | null>(null);
 
-  const copy = async () => setNote((await copyText(text)) ? 'Копирано.' : 'Копирање није успело.');
+  // The text is built in Cyrillic; what is copied or shared is in the script the user has chosen.
+  const copy = async () => setNote((await copyText(tx(text))) ? 'Копирано.' : 'Копирање није успело.');
 
   const share = async () => {
     const url = location.href;
     if (typeof navigator.share === 'function') {
       try {
-        await navigator.share({ title, text, url });
+        await navigator.share({ title: tx(title), text: tx(text), url });
         return;
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return; // the user closed the share sheet
       }
     }
-    setNote((await copyText(`${text}\n${url}`)) ? 'Текст и линк су копирани.' : 'Дељење није успело.');
+    setNote((await copyText(`${tx(text)}\n${url}`)) ? 'Текст и линк су копирани.' : 'Дељење није успело.');
   };
 
   return (

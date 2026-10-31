@@ -3,16 +3,27 @@
   --accent: #1f5fbf; --warn-bg: #fff4d6; --warn-fg: #6b4a00; --err: #b3261e;
   color-scheme: light dark;
 }
+/* Theme: follows the system unless the user chose one (data-theme on <html>, set by src/ui/prefs.ts).
+   The dark tokens are listed twice (system dark, chosen dark): keep both blocks the same. */
+:root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #121212; --fg: #ececec; --muted: #a8a8a8; --card: #1c1c1c; --line: #3a3a3a;
     --accent: #7fb0ff; --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff8a80;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #121212; --fg: #ececec; --muted: #a8a8a8; --card: #1c1c1c; --line: #3a3a3a;
+  --accent: #7fb0ff; --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff8a80;
+  color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
 main { max-width: 36rem; margin: 0 auto; padding: 1rem; }
 h1 { font-size: 1.25rem; margin: 0 0 1rem; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: 1rem; }
+.top h1 { margin: 0; }
+.prefs { display: flex; flex-wrap: wrap; gap: .5rem; }
 label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
 input, select { width: 100%; min-height: 44px; padding: .5rem .75rem; font: inherit; color: inherit;
   background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
