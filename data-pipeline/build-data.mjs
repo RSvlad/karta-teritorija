@@ -9,12 +9,15 @@
 // If data-pipeline/cache/<city>/streets.json exists (streets.py), its streets are added to the city.
 // The optional "Тачке" tab gives the capitals and other points; their coordinates come from
 // data-pipeline/cache/<city>/geocode-cache.json (geocode.py), which reads work/<city>/places-input.json written here.
-import { mkdirSync, writeFileSync } from 'node:fs';
+// The optional "Обим" tab plus those capitals feed data-pipeline/territories.py (run at the end), which writes
+// public/data/<city>.territories.geojson, the borders shown on the map. It needs Python (requirements.txt).
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
+import { buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
 
 const OUT_DIR = 'public/data';
 const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -86,10 +89,11 @@ let failed = false;
 
 for (const c of cities) {
   try {
-    const [territoriesRaw, rulesRaw, placesRaw] = await Promise.all([
+    const [territoriesRaw, rulesRaw, placesRaw, scopeRaw] = await Promise.all([
       fetchSheet(token, c.sheetId, 'Територије'),
       fetchSheet(token, c.sheetId, 'Правила'),
       fetchSheet(token, c.sheetId, 'Тачке', { optional: true }),
+      fetchSheet(token, c.sheetId, 'Обим', { optional: true }),
     ]);
     // `updated` drives the stale-data warning (#17), so it must be when the Sheet was last edited, not when
     // this build ran: otherwise every deploy would make neglected data look fresh.
@@ -118,7 +122,23 @@ for (const c of cities) {
       console.warn(`! ${c.id}: нема OSM индекса улица; претрага познаје само улице из Sheet-а. `
         + `Покрените: python data-pipeline/streets.py --city ${c.id}`);
     }
-    written.push({ id: c.id, name: c.name, data });
+    // Territory borders are drawn after the data is written (see the end of this file); here only the input is prepared.
+    let drawing = null;
+    if (scopeRaw === null) {
+      console.warn(`! ${c.id}: нема листа „Обим“; мапа нема границе територија (на мапи пише „још није доступна“).`);
+    } else {
+      const { input, geocodedCapitals } = buildTerritoriesInput(data, scopeRaw);
+      if (geocodedCapitals === 0) {
+        console.warn(`! ${c.id}: ниједна престоница нема координате, па се територије не цртају `
+          + `(покрените: python data-pipeline/geocode.py --city ${c.id} и комитујте geocode-cache.json).`);
+      } else if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
+        console.warn(`! ${c.id}: нема уличне мреже; територије се не цртају `
+          + `(покрените: python data-pipeline/territories.py --city ${c.id} --refresh и комитујте network.json).`);
+      } else {
+        drawing = input;
+      }
+    }
+    written.push({ id: c.id, name: c.name, data, drawing });
   } catch (e) {
     failed = true;
     console.error(`\n✖ ${c.id}: ${e.message}`);
@@ -137,3 +157,25 @@ writeFileSync(
   JSON.stringify(written.map(({ id, name }) => ({ id, name })), null, 2) + '\n',
 );
 console.log(`✔ подаци из Sheet-а: ${written.map((w) => w.id).join(', ')} → ${OUT_DIR}/`);
+
+// Territory borders: territories.py writes public/data/<city>.territories.geojson from the street network cache
+// (committed) and the input above. A drawing error means the "Обим" tab is wrong, so it stops the build like any
+// other bad Sheet; a city that cannot be drawn at all (warned above) just has no borders.
+const python = process.env.PYTHON ?? (process.platform === 'win32' ? 'python' : 'python3');
+let drawFailed = false;
+for (const { id, drawing } of written) {
+  if (!drawing) continue;
+  writeTerritoriesInput(id, drawing);
+  const run = spawnSync(python, ['data-pipeline/territories.py', '--city', id], {
+    stdio: 'inherit',
+    env: { ...process.env, PYTHONUTF8: '1' },
+  });
+  if (run.error) {
+    console.error(`\n✖ ${id}: ${python} се не може покренути (${run.error.message}); потребно је: pip install -r data-pipeline/requirements.txt`);
+    drawFailed = true;
+  } else if (run.status !== 0) {
+    console.error(`\n✖ ${id}: цртање територија није успело (излаз ${run.status}), погледајте поруку изнад.`);
+    drawFailed = true;
+  }
+}
+if (drawFailed) fail('Билд прекинут: територије се не могу нацртати.');
