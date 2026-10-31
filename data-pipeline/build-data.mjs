@@ -7,6 +7,7 @@
 //
 // Without config the fictional demo data is used, for local development only.
 // If data-pipeline/cache/<city>/streets.json exists (streets.py), its streets are added to the city.
+// A city of cities.yml that has that cache but no Sheet is still built, with its OSM streets only (lib/osm-only.mjs).
 // The optional "Тачке" tab gives the capitals and other points; their coordinates come from
 // data-pipeline/cache/<city>/geocode-cache.json (geocode.py), which reads work/<city>/places-input.json written here.
 // The street rules ("Правила") alone feed data-pipeline/territories.py (run at the end), which writes
@@ -16,6 +17,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
+import { loadOsmOnlyCities } from './lib/osm-only.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
 import { buildRulesInput, buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
@@ -152,9 +154,17 @@ for (const { id, data } of written) {
   writeFileSync(`${OUT_DIR}/${id}.json`, JSON.stringify(data, null, 2) + '\n');
   if (data.places.length) writePlacesInput(data); // input of geocode.py
 }
+
+// Cities with an OSM street index but no Sheet (cities.yml): searchable, every street "unassigned".
+const osmOnly = loadOsmOnlyCities(new Set(written.map((w) => w.id)), buildDate);
+for (const { id, data, report } of osmOnly) {
+  writeFileSync(`${OUT_DIR}/${id}.json`, JSON.stringify(data, null, 2) + '\n');
+  console.log(`✔ ${id}: само улице из OSM-а (нема Sheet-а), улица: ${data.streets.length}`);
+  if (report.skipped.length) console.warn(`! ${id}: прескочене улице: ${report.skipped.join('; ')}`);
+}
 writeFileSync(
   `${OUT_DIR}/cities.json`,
-  JSON.stringify(written.map(({ id, name }) => ({ id, name })), null, 2) + '\n',
+  JSON.stringify([...written, ...osmOnly].map(({ id, name }) => ({ id, name })), null, 2) + '\n',
 );
 console.log(`✔ подаци из Sheet-а: ${written.map((w) => w.id).join(', ')} → ${OUT_DIR}/`);
 

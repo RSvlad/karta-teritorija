@@ -359,7 +359,8 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
           />
         ) : null}
       </section>
-      <MapSection key={cityId} cityId={cityId} data={data} resolver={resolver} />
+      {/* A city that only has its streets (no territories yet) has nothing to draw or locate. */}
+      {resolver.territories.size > 0 && <MapSection key={cityId} cityId={cityId} data={data} resolver={resolver} />}
       <footer class="muted">Ажурирано: {data.updated}</footer>
     </>
   );
@@ -1016,7 +1017,11 @@ function ResultCard({ result, resolver, city, reportEmail, updated }: {
       break;
     case 'unassigned': {
       const email = reportRecipient(reportEmail);
-      body = (
+      // A city without territories has only its street list so far: nothing is assigned, so there is nothing to report.
+      const noTerritories = resolver.territories.size === 0;
+      body = noTerritories ? (
+        <p>Територије за овај град још нису унете.</p>
+      ) : (
         <>
           <p>Улица није додељена.</p>
           {email && <a class="button" href={reportLink(email, result.street, result.house, city)}>Пријави</a>}
