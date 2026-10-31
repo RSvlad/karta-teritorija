@@ -25,7 +25,7 @@ Workflow `.github/workflows/deploy.yml` на сваки push на `main` пок�
 
 ### Подешавање
 
-1. У Google Cloud-у направите service account, укључите **Google Sheets API** и преузмите кључ (JSON).
+1. У Google Cloud-у направите service account, укључите **Google Sheets API** и **Google Drive API** (потребан само за датум последње измене Sheet-а, на ком почива упозорење о застарелим подацима; без њега билд упозори и користи датум билда) и преузмите кључ (JSON).
 2. Поделите сваки Sheet са `client_email` из кључа (само читање).
 3. **Settings → Secrets and variables → Actions → Secrets**:
    - `GOOGLE_SERVICE_ACCOUNT` – цео садржај JSON кључа;

@@ -14,7 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
-import { fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
+import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
 
 const OUT_DIR = 'public/data';
 const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -78,7 +78,7 @@ if (!credentials || !citiesJson) {
 
 const cities = parseCities(citiesJson);
 const token = await getAccessToken(parseCredentials(credentials)).catch((e) => fail(e.message));
-const updated = new Date().toISOString().slice(0, 10);
+const buildDate = new Date().toISOString().slice(0, 10);
 
 mkdirSync(OUT_DIR, { recursive: true });
 const written = [];
@@ -91,6 +91,14 @@ for (const c of cities) {
       fetchSheet(token, c.sheetId, 'Правила'),
       fetchSheet(token, c.sheetId, 'Тачке', { optional: true }),
     ]);
+    // `updated` drives the stale-data warning (#17), so it must be when the Sheet was last edited, not when
+    // this build ran: otherwise every deploy would make neglected data look fresh.
+    let updated = await fetchModifiedDate(token, c.sheetId).catch(() => null);
+    if (!updated) {
+      updated = buildDate;
+      console.warn(`! ${c.id}: датум измене Sheet-а се не може прочитати (укључите Google Drive API за пројекат `
+        + 'сервисног налога); као „ажурирано“ користи се датум билда, па упозорење о застарелим подацима неће радити.');
+    }
     let data = buildCity({
       city: c.id, name: c.name, reportEmail: c.reportEmail, updated, territoriesRaw, rulesRaw, placesRaw,
     });

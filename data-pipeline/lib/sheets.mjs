@@ -2,7 +2,11 @@
 // so the build needs no extra dependencies.
 import { createSign } from 'node:crypto';
 
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+// drive.metadata.readonly is only for the Sheet's last-modified time (fetchModifiedDate); no file content.
+const SCOPE = [
+  'https://www.googleapis.com/auth/spreadsheets.readonly',
+  'https://www.googleapis.com/auth/drive.metadata.readonly',
+].join(' ');
 const b64url = (input) => Buffer.from(input).toString('base64url');
 
 export function parseCredentials(json) {
@@ -51,4 +55,19 @@ export async function fetchSheet(token, spreadsheetId, title, { optional = false
   }
   if (!res.ok) throw new Error(`читање листа „${title}“ није успело (${res.status}): ${await res.text()}`);
   return (await res.json()).values ?? [];
+}
+
+/**
+ * Date (YYYY-MM-DD, UTC) the Sheet was last edited, from Drive metadata; null when it cannot be read
+ * (Drive API not enabled for the project, no access). The build date would hide a neglected Sheet, so the
+ * caller falls back to it only with a warning.
+ */
+export async function fetchModifiedDate(token, spreadsheetId) {
+  const url = `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(spreadsheetId)}`
+    + '?fields=modifiedTime&supportsAllDrives=true';
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) return null;
+  const { modifiedTime } = await res.json();
+  const time = Date.parse(modifiedTime ?? '');
+  return Number.isNaN(time) ? null : new Date(time).toISOString().slice(0, 10);
 }
