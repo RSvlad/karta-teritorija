@@ -23,7 +23,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install
+      - run: npm ci
 
       # territories.py (run by `npm run build` outside pull requests) draws the territory borders for the map.
       - uses: actions/setup-python@v5
@@ -69,7 +69,7 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install
+      - run: npm ci
 
       - run: npm run build
 
