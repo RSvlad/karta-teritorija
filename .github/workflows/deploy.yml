@@ -48,9 +48,40 @@ jobs:
         with:
           path: dist
 
+  # E2E (Playwright) and Lighthouse CI run against a build made from the fictional demo data, never the
+  # secrets: the tests name streets that exist only in fixtures/. The deploy waits for this job.
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: npm install
+
+      - run: npm run build
+
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+
+      # Performance and accessibility >= 90 (lighthouserc.json).
+      - run: npm run lighthouse
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-results
+          path: |
+            test-results/
+            .lighthouseci/
+          if-no-files-found: ignore
+
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    needs: build
+    needs: [build, quality]
     runs-on: ubuntu-latest
     permissions:
       pages: write
