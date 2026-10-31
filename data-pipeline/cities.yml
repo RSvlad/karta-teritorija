@@ -8,3 +8,9 @@ novi-sad:
   # Settlements are OSM administrative boundaries of these admin_level values.
   # Serbia: settlement (naselje) = 9, municipality = 8, city = 7 (OSM wiki: Serbia/RGZ Import).
   settlement_admin_levels: [9]
+
+vrsac:
+  name: Вршац
+  # Query for the city boundary (OSMnx geocodes it with Nominatim). Check that it returns the town of Vršac, not the whole municipality.
+  place: Vršac, Serbia
+  settlement_admin_levels: [9]
