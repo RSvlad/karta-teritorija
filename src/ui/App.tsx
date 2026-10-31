@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
-import type { Assignment, CityData, HouseNumber, Resolution, Resolver, Street } from '../resolver';
-import { createStreetSearch } from '../search/streets';
+import type { Assignment, CityData, HouseNumber, Place, Resolution, Resolver, Street } from '../resolver';
+import { createSearch, hitId, hitName } from '../search/search';
+import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
@@ -133,10 +134,10 @@ interface SearchProps {
 }
 
 function Search({ cityId, data, resolver, route, go }: SearchProps) {
-  const search = useMemo(() => createStreetSearch(data.streets), [data]);
+  const search = useMemo(() => createSearch(data.streets, resolver.places), [data, resolver]);
   const linkedStreet = route?.street ? data.streets.find((s) => s.id === route.street) ?? null : null;
   const [query, setQuery] = useState(linkedStreet?.name ?? '');
-  const [chosen, setChosen] = useState<Street | null>(linkedStreet);
+  const [chosen, setChosen] = useState<Hit | null>(linkedStreet ? { kind: 'street', street: linkedStreet } : null);
   const [houseText, setHouseText] = useState(linkedStreet ? route?.house ?? '' : '');
   // Combobox state: highlighted option (-1 = none) and whether Escape has dismissed the list.
   const [active, setActive] = useState(-1);
@@ -144,17 +145,20 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
 
   const suggestions = useMemo(() => search(query), [search, query]);
   // A unique exact match counts as chosen without a click.
-  const exact = suggestions.filter((s) => normalizeText(s.name) === normalizeText(query));
-  const street = chosen ?? (exact.length === 1 ? exact[0]! : null);
+  const exact = suggestions.filter((h) => normalizeText(hitName(h)) === normalizeText(query));
+  const picked = chosen ?? (exact.length === 1 ? exact[0]! : null);
+  const street = picked?.kind === 'street' ? picked.street : null;
+  const place = picked?.kind === 'place' ? picked.place : null;
 
   const house = parseHouseNumber(houseText);
-  const houseInvalid = houseText.trim() !== '' && !house;
+  const houseInvalid = !place && houseText.trim() !== '' && !house;
   const result = street && !houseInvalid ? resolver.resolve(street.id, house) : null;
-  const canList = !street && suggestions.length > 0;
+  const canList = !picked && suggestions.length > 0;
   const showList = open && canList;
 
   // State -> URL. A newly chosen street adds a history entry; house number edits rewrite it.
   // While the house number is half-typed (invalid) the URL keeps the last valid one.
+  // Places have no link of their own: choosing one leaves the city link only.
   const lastStreetId = useRef(street?.id);
   useEffect(() => {
     if (houseInvalid || (!route && !street)) return;
@@ -173,15 +177,15 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
     } else if (linked.id === street?.id && (route.house ?? '') === houseText.trim()) {
       return;
     }
-    setChosen(linked);
+    setChosen(linked ? { kind: 'street', street: linked } : null);
     setQuery(linked?.name ?? '');
     setHouseText(linked ? route.house ?? '' : '');
     setActive(-1);
   }, [route?.street, route?.house]);
 
-  const pick = (s: Street) => {
-    setChosen(s);
-    setQuery(s.name);
+  const pick = (h: Hit) => {
+    setChosen(h);
+    setQuery(hitName(h));
     setActive(-1);
   };
 
@@ -221,7 +225,7 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
 
   return (
     <>
-      <label for="street">Улица</label>
+      <label for="street">Улица или тачка</label>
       <input
         id="street"
         type="search"
@@ -236,42 +240,58 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
         aria-activedescendant={showList && active >= 0 ? `suggestion-${active}` : undefined}
       />
       {showList && (
-        <ul id="suggestions" class="suggestions" role="listbox" aria-label="Предлози улица">
-          {suggestions.map((s, i) => (
+        <ul id="suggestions" class="suggestions" role="listbox" aria-label="Предлози улица и тачака">
+          {suggestions.map((h, i) => (
             <li
-              key={s.id}
+              key={hitId(h)}
               id={`suggestion-${i}`}
               role="option"
               aria-selected={i === active}
               // Keeps focus in the input while clicking an option.
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => pick(s)}
+              onClick={() => pick(h)}
             >
               <span>
-                <Highlight text={s.name} query={query} />
-                {s.settlement && <span class="muted"> · {s.settlement}</span>}
+                {/* The icon is decoration; the kind is also spoken and, for places, the address is shown. */}
+                <span class="kind" aria-hidden="true">{h.kind === 'street' ? '🛣️' : h.place.kind === 'capital' ? '★' : '📍'}</span>
+                <span class="sr-only">{h.kind === 'street' ? 'Улица: ' : h.place.kind === 'capital' ? 'Престоница: ' : 'Тачка: '}</span>
+                <Highlight text={hitName(h)} query={query} />
+                {h.kind === 'street' && h.street.settlement && <span class="muted"> · {h.street.settlement}</span>}
+                {h.kind === 'place' && <span class="muted"> · {h.place.address}</span>}
               </span>
             </li>
           ))}
         </ul>
       )}
 
-      <label for="house">Број (опционо)</label>
-      <input
-        id="house"
-        inputMode="numeric"
-        autocomplete="off"
-        value={houseText}
-        onInput={(e) => setHouseText(e.currentTarget.value)}
-        aria-invalid={houseInvalid}
-      />
-      {houseInvalid && <p class="error">Број није у препознатом облику (нпр. 15, 15а, 15/2).</p>}
+      {!place && (
+        <>
+          <label for="house">Број (опционо)</label>
+          <input
+            id="house"
+            inputMode="numeric"
+            autocomplete="off"
+            value={houseText}
+            onInput={(e) => setHouseText(e.currentTarget.value)}
+            aria-invalid={houseInvalid}
+          />
+          {houseInvalid && <p class="error">Број није у препознатом облику (нпр. 15, 15а, 15/2).</p>}
+        </>
+      )}
 
       <section aria-live="polite" class="result">
-        {query.trim() === '' ? null : !street && !canList ? (
-          <p class="muted">Улица није пронађена.</p>
+        {query.trim() === '' ? null : !picked && !canList ? (
+          <p class="muted">Улица или тачка није пронађена.</p>
+        ) : place ? (
+          <PlaceCard place={place} resolver={resolver} city={data.name} updated={data.updated} />
         ) : result ? (
-          <ResultCard result={result} city={data.name} reportEmail={data.reportEmail} updated={data.updated} />
+          <ResultCard
+            result={result}
+            resolver={resolver}
+            city={data.name}
+            reportEmail={data.reportEmail}
+            updated={data.updated}
+          />
         ) : null}
       </section>
       <footer class="muted">Ажурирано: {data.updated}</footer>
@@ -314,6 +334,103 @@ function reportLink(email: string, street: Street, house: HouseNumber | null, ci
   return `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`;
 }
 
+/** Directions in the user's maps app: by coordinates when known, else by the address text. */
+function navigationUrl(p: Place): string {
+  const destination = p.lat !== undefined && p.lng !== undefined ? `${p.lat},${p.lng}` : p.address;
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination)}`;
+}
+
+/** The point on a map (OpenStreetMap); an address search when the place has no coordinates. */
+function mapUrl(p: Place): string {
+  if (p.lat !== undefined && p.lng !== undefined) {
+    return `https://www.openstreetmap.org/?mlat=${p.lat}&mlon=${p.lng}#map=17/${p.lat}/${p.lng}`;
+  }
+  return `https://www.openstreetmap.org/search?query=${encodeURIComponent(p.address)}`;
+}
+
+function PlaceLinks({ place }: { place: Place }) {
+  return (
+    <div class="actions">
+      <a class="button" href={navigationUrl(place)} target="_blank" rel="noopener">Навигација</a>
+      <a class="button secondary" href={mapUrl(place)} target="_blank" rel="noopener">На мапи</a>
+    </div>
+  );
+}
+
+/** Distinct territories of a resolution, in the order they are shown. */
+function capitalsOf(result: Resolution, resolver: Resolver): Place[] {
+  const assignments = result.kind === 'rules' ? result.assignments
+    : result.kind === 'linear' ? result.segments
+    : result.kind === 'inherited' ? [result.assignment]
+    : [];
+  const capitals = new Map<string, Place>();
+  for (const a of assignments) {
+    const capital = resolver.capitalOf(a.territory.id);
+    if (capital) capitals.set(capital.id, capital);
+  }
+  return [...capitals.values()];
+}
+
+/** "★ Престоница: назив, адреса"; the territory is named only when the card spans several. */
+function capitalText(p: Place, withTerritory: boolean): string {
+  return `★ Престоница${withTerritory ? ` (територија ${p.territoryId})` : ''}: ${p.name}, ${p.address}`;
+}
+
+function CapitalLine({ place, withTerritory }: { place: Place; withTerritory: boolean }) {
+  return (
+    <div class="capital">
+      <p>
+        <span aria-hidden="true">★ </span>
+        Престоница{withTerritory ? ` (територија ${place.territoryId})` : ''}: <strong>{place.name}</strong>, {place.address}
+      </p>
+      {place.note && <p class="muted">{place.note}</p>}
+      <PlaceLinks place={place} />
+    </div>
+  );
+}
+
+function StaleWarning({ updated }: { updated: string }) {
+  // Set only when the data is older than the threshold (VITE_STALE_DAYS, default 90 days).
+  const staleAge = staleAgeDays(updated);
+  if (staleAge === null) return null;
+  return (
+    <p class="warn">
+      ⚠ Подаци су последњи пут ажурирани пре {staleAge} {daysLabel(staleAge)} ({updated}) и могу бити застарели.
+    </p>
+  );
+}
+
+function PlaceCard({ place, resolver, city, updated }: { place: Place; resolver: Resolver; city: string; updated: string }) {
+  const territory = resolver.territories.get(place.territoryId)!;
+  const title = `${place.name} · ${city}`;
+  const kind = place.kind === 'capital' ? 'Престоница' : place.kind === 'collector' ? 'Сабирна тачка' : 'Тачка';
+  const text = [
+    title,
+    `${kind}: ${place.address}`,
+    `Територија ${territory.id} „${territory.name}“: ${territory.defaults.primary}`,
+    ...(place.note ? [place.note] : []),
+  ].join('\n');
+  return (
+    <article class="card">
+      <h2 class="card-title">{title}</h2>
+      <StaleWarning updated={updated} />
+      <p>
+        <span aria-hidden="true">{place.kind === 'capital' ? '★ ' : '📍 '}</span>
+        {kind}: {place.address}
+      </p>
+      {place.note && <p class="muted">{place.note}</p>}
+      <h2>
+        <span class="swatch" style={{ background: territory.color }} aria-hidden="true" />
+        Територија {territory.id} „{territory.name}“
+      </h2>
+      <p><strong>{territory.defaults.primary}</strong></p>
+      <PlaceLinks place={place} />
+      <p class="print-only">Ажурирано: {updated}</p>
+      <ShareBar key={text} title={title} text={text} />
+    </article>
+  );
+}
+
 /** Plain-text version of an assignment, for Copy and Share. */
 function assignmentText(a: Assignment): string {
   const people = a.people.deputy ? `${a.people.primary} (заменик: ${a.people.deputy})` : a.people.primary;
@@ -321,7 +438,7 @@ function assignmentText(a: Assignment): string {
 }
 
 /** Plain-text version of the whole result card. */
-function resultText(result: Resolution, title: string): string {
+function resultText(result: Resolution, title: string, capitals: Place[]): string {
   const lines = [title];
   switch (result.kind) {
     case 'rules':
@@ -338,6 +455,7 @@ function resultText(result: Resolution, title: string): string {
       lines.push('Улица није додељена.');
       break;
   }
+  lines.push(...capitals.map((p) => capitalText(p, capitals.length > 1)));
   return lines.join('\n');
 }
 
@@ -379,11 +497,11 @@ function ShareBar({ title, text }: { title: string; text: string }) {
   );
 }
 
-function ResultCard({ result, city, reportEmail, updated }: { result: Resolution; city: string; reportEmail?: string; updated: string }) {
+function ResultCard({ result, resolver, city, reportEmail, updated }: {
+  result: Resolution; resolver: Resolver; city: string; reportEmail?: string; updated: string;
+}) {
   const title = `${result.street.name}${'house' in result && result.house ? ' ' + formatHouseNumber(result.house) : ''} · ${city}`;
-  // Set only when the data is older than the threshold (VITE_STALE_DAYS, default 90 days).
-  const staleAge = staleAgeDays(updated);
-
+  const capitals = capitalsOf(result, resolver);
   let body;
   switch (result.kind) {
     case 'rules':
@@ -434,16 +552,13 @@ function ResultCard({ result, city, reportEmail, updated }: { result: Resolution
     }
   }
 
-  const text = resultText(result, title);
+  const text = resultText(result, title, capitals);
   return (
     <article class="card">
       <h2 class="card-title">{title}</h2>
-      {staleAge !== null && (
-        <p class="warn">
-          ⚠ Подаци су последњи пут ажурирани пре {staleAge} {daysLabel(staleAge)} ({updated}) и могу бити застарели.
-        </p>
-      )}
+      <StaleWarning updated={updated} />
       {body}
+      {capitals.map((p) => <CapitalLine key={p.id} place={p} withTerritory={capitals.length > 1} />)}
       {/* The page footer is hidden in print, so the date goes on the printed card itself. */}
       <p class="print-only">Ажурирано: {updated}</p>
       {/* key resets the "copied" note when the result changes. */}

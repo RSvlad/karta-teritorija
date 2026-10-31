@@ -26,5 +26,10 @@
     { "streetId": "skolska-ns", "territoryId": "14" },
     { "streetId": "skolska-pv", "territoryId": "15" },
     { "streetId": "djure-jaksica", "territoryId": "15" }
+  ],
+  "places": [
+    { "id": "demo-dvorana-liberti", "name": "Демо сала Либерти", "kind": "capital", "territoryId": "14", "address": "Футошка 1, Нови Сад", "lat": 45.2556, "lng": 19.8302 },
+    { "id": "demo-dvorana-liman", "name": "Демо сала Лиман", "kind": "capital", "territoryId": "15", "address": "Железничка 5, Нови Сад" },
+    { "id": "demo-sabirna-tacka", "name": "Демо сабирна тачка", "kind": "collector", "territoryId": "14", "address": "Јеврејска 3, Нови Сад", "lat": 45.2561, "lng": 19.8449, "note": "Недељом у 9:30" }
   ]
 }

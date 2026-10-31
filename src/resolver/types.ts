@@ -38,6 +38,22 @@ export interface InternalStreet {
   territoryId: string;
 }
 
+/** `capital` = the territory's meeting place (exactly one per territory); the others are optional extras. */
+export type PlaceKind = 'capital' | 'collector' | 'other';
+
+/** A named point of a territory. Never a private home address (see the Sheet template). */
+export interface Place {
+  id: string;
+  name: string;
+  kind: PlaceKind;
+  territoryId: string;
+  address: string;
+  /** Set by the pipeline from the geocode cache; absent when the address could not be geocoded. */
+  lat?: number;
+  lng?: number;
+  note?: string;
+}
+
 export interface CityData {
   city: string;
   name: string;
@@ -48,6 +64,8 @@ export interface CityData {
   streets: Street[];
   rules: Rule[];
   internal: InternalStreet[];
+  /** Capitals and other points. Data built before #10 has none, so readers treat a missing value as []. */
+  places: Place[];
 }
 
 export interface HouseNumber {

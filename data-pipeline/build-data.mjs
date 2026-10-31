@@ -7,10 +7,13 @@
 //
 // Without config the fictional demo data is used, for local development only.
 // If data-pipeline/cache/<city>/streets.json exists (streets.py), its streets are added to the city.
+// The optional "Тачке" tab gives the capitals and other points; their coordinates come from
+// data-pipeline/cache/<city>/geocode-cache.json (geocode.py), which reads work/<city>/places-input.json written here.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
+import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
 
 const OUT_DIR = 'public/data';
@@ -51,6 +54,16 @@ function reportOsm(id, osm, { missingInOsm, added, skipped }) {
   }
 }
 
+// A place without coordinates still works (navigation falls back to the address text), so this is
+// a warning here; report.py (#9) makes a capital without coordinates critical because it seeds the drawing.
+function reportPlaces(id, count, missing) {
+  console.log(`✔ ${id}: тачака: ${count}, са координатама: ${count - missing.length}`);
+  if (missing.length) {
+    const lines = missing.map((p) => `    • ${p.name}: ${p.address}`).join('\n');
+    console.warn(`! ${id}: тачке без координата (покрените: python data-pipeline/geocode.py --city ${id}):\n${lines}`);
+  }
+}
+
 const credentials = process.env.GOOGLE_SERVICE_ACCOUNT;
 const citiesJson = process.env.SHEETS_CITIES;
 
@@ -73,13 +86,21 @@ let failed = false;
 
 for (const c of cities) {
   try {
-    const [territoriesRaw, rulesRaw] = await Promise.all([
+    const [territoriesRaw, rulesRaw, placesRaw] = await Promise.all([
       fetchSheet(token, c.sheetId, 'Територије'),
       fetchSheet(token, c.sheetId, 'Правила'),
+      fetchSheet(token, c.sheetId, 'Тачке', { optional: true }),
     ]);
     let data = buildCity({
-      city: c.id, name: c.name, reportEmail: c.reportEmail, updated, territoriesRaw, rulesRaw,
+      city: c.id, name: c.name, reportEmail: c.reportEmail, updated, territoriesRaw, rulesRaw, placesRaw,
     });
+    if (placesRaw === null) {
+      console.warn(`! ${c.id}: нема листа „Тачке“; картице неће имати престоницу.`);
+    } else {
+      const geocoded = attachCoordinates(data, loadGeocodeCache(c.id));
+      data = geocoded.data;
+      reportPlaces(c.id, data.places.length, geocoded.missing);
+    }
     const osm = loadOsmStreets(c.id);
     if (osm) {
       const merged = mergeOsmStreets(data, osm.streets);
@@ -101,6 +122,7 @@ if (failed) fail('Билд прекинут: исправите Sheet.');
 
 for (const { id, data } of written) {
   writeFileSync(`${OUT_DIR}/${id}.json`, JSON.stringify(data, null, 2) + '\n');
+  if (data.places.length) writePlacesInput(data); // input of geocode.py
 }
 writeFileSync(
   `${OUT_DIR}/cities.json`,

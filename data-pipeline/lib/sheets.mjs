@@ -38,11 +38,15 @@ export async function getAccessToken(key, now = Math.floor(Date.now() / 1000)) {
   return (await res.json()).access_token;
 }
 
-/** Returns the sheet as a 2D array of strings, header row first. */
-export async function fetchSheet(token, spreadsheetId, title) {
+/**
+ * Returns the sheet as a 2D array of strings, header row first.
+ * With `optional`, a tab that does not exist gives null instead of an error.
+ */
+export async function fetchSheet(token, spreadsheetId, title, { optional = false } = {}) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(title)}`;
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (res.status === 400 || res.status === 404) {
+    if (optional) return null;
     throw new Error(`лист „${title}“ не постоји у Sheet-у ${spreadsheetId} (${res.status})`);
   }
   if (!res.ok) throw new Error(`читање листа „${title}“ није успело (${res.status}): ${await res.text()}`);
