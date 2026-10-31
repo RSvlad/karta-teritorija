@@ -9,15 +9,16 @@
 // If data-pipeline/cache/<city>/streets.json exists (streets.py), its streets are added to the city.
 // The optional "Тачке" tab gives the capitals and other points; their coordinates come from
 // data-pipeline/cache/<city>/geocode-cache.json (geocode.py), which reads work/<city>/places-input.json written here.
-// The optional "Обим" tab plus those capitals feed data-pipeline/territories.py (run at the end), which writes
+// The street rules ("Правила") alone feed data-pipeline/territories.py (run at the end), which writes
 // public/data/<city>.territories.geojson, the borders shown on the map. It needs Python (requirements.txt).
+// (A city with both an "Обим" tab and geocoded capitals ("Тачке") is still drawn the older way, from the capitals.)
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { buildCity } from './lib/build-city.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials } from './lib/sheets.mjs';
-import { buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
+import { buildRulesInput, buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
 
 const OUT_DIR = 'public/data';
 const ID_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
@@ -123,20 +124,17 @@ for (const c of cities) {
         + `Покрените: python data-pipeline/streets.py --city ${c.id}`);
     }
     // Territory borders are drawn after the data is written (see the end of this file); here only the input is prepared.
+    // Borders are drawn from the street rules alone (territories.py, "streets" mode). Only a city that has both
+    // the "Обим" tab and geocoded capitals keeps the older capital-and-scope drawing.
     let drawing = null;
-    if (scopeRaw === null) {
-      console.warn(`! ${c.id}: нема листа „Обим“; мапа нема границе територија (на мапи пише „још није доступна“).`);
+    const hasCapitals = data.places.some((p) => p.kind === 'capital' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
+    if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
+      console.warn(`! ${c.id}: нема уличне мреже; територије се не цртају `
+        + `(покрените: python data-pipeline/territories.py --city ${c.id} --refresh и комитујте network.json).`);
+    } else if (scopeRaw !== null && hasCapitals) {
+      drawing = buildTerritoriesInput(data, scopeRaw).input;
     } else {
-      const { input, geocodedCapitals } = buildTerritoriesInput(data, scopeRaw);
-      if (geocodedCapitals === 0) {
-        console.warn(`! ${c.id}: ниједна престоница нема координате, па се територије не цртају `
-          + `(покрените: python data-pipeline/geocode.py --city ${c.id} и комитујте geocode-cache.json).`);
-      } else if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
-        console.warn(`! ${c.id}: нема уличне мреже; територије се не цртају `
-          + `(покрените: python data-pipeline/territories.py --city ${c.id} --refresh и комитујте network.json).`);
-      } else {
-        drawing = input;
-      }
+      drawing = buildRulesInput(data);
     }
     written.push({ id: c.id, name: c.name, data, drawing });
   } catch (e) {

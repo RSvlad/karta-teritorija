@@ -52,6 +52,11 @@ SNAP_M = 25.0         # a capital this close to a block (e.g. on the street) sti
 INNER_M = 2.0         # a street within this distance of a border is a border street, not an internal one
 INTERNAL_SHARE = 0.9  # a street is internal when this much of its length is inside one territory
 BORDER_MIN_M = 10.0   # a street runs along a territory's border when at least this much of it lies on it
+# Drawing from the streets alone (no capitals, no "Обим"):
+VOTE_BUFFER_M = 1.5   # a block edge this close to a rule's street counts as lying on it
+TIE_M = 1.0           # two territories whose shares differ by less than this decide nothing
+FILL_ROUNDS = 3       # how many blocks deep unlisted streets are filled in from the labelled ones
+MAX_BLOCK_M2 = 1_500_000  # larger faces (forest, fields) are not a neighbourhood and are never labelled
 
 BARRIER_RAILWAY = {"rail", "light_rail"}
 BARRIER_WATERWAY = {"river", "canal"}
@@ -159,7 +164,12 @@ def split_blocks(lines: list) -> list:
 
 def block_graph(blocks: list, barriers: list) -> dict[int, set[int]]:
     """Neighbouring blocks, except where their shared edge lies on a barrier."""
-    graph: dict[int, set[int]] = {i: set() for i in range(len(blocks))}
+    return {i: set(nb) for i, nb in open_edges(blocks, barriers).items()}
+
+
+def open_edges(blocks: list, barriers: list) -> dict[int, dict[int, float]]:
+    """Neighbouring blocks -> length (m) of their shared edge that is not a barrier."""
+    graph: dict[int, dict[int, float]] = {i: {} for i in range(len(blocks))}
     walls = unary_union(barriers).buffer(TOL_M) if barriers else None
     edges = [b.boundary for b in blocks]
     tree = STRtree(blocks)
@@ -173,9 +183,59 @@ def block_graph(blocks: list, barriers: list) -> dict[int, set[int]]:
                 continue
             open_len = shared.length if walls is None else shared.difference(walls).length
             if open_len >= MIN_OPEN_M:
-                graph[i].add(j)
-                graph[j].add(i)
+                graph[i][j] = open_len
+                graph[j][i] = open_len
     return graph
+
+
+def votes_from_streets(blocks: list, tree: STRtree, claims: list) -> dict[int, dict[str, float]]:
+    """claims: [(territory id, street geometry)] -> per block, metres of its edge lying on each territory's streets."""
+    votes: dict[int, dict[str, float]] = defaultdict(lambda: defaultdict(float))
+    for tid, line in claims:
+        zone = line.buffer(VOTE_BUFFER_M)
+        for j in tree.query(zone, predicate="intersects"):
+            length = blocks[int(j)].boundary.intersection(zone).length
+            if length >= TOL_M:
+                votes[int(j)][tid] += length
+    return votes
+
+
+def label_blocks(blocks: list, edges: dict, votes: dict, claimed: set) -> tuple[dict[int, str], int]:
+    """Block -> territory, from the streets alone. -> (labels, number of blocks left undecided by a tie).
+
+    1. A block belongs to the territory whose streets make up most of its edge (a tie decides nothing).
+    2. The blocks around a few labelled ones (streets not listed in any rule) take the territory they
+       share most edge with, for at most FILL_ROUNDS rounds, so an unlisted enclave is filled but the
+       outskirts are not painted over. Blocks larger than MAX_BLOCK_M2 (forest, fields) never get one.
+    """
+    labels: dict[int, str] = {}
+    ties = 0
+    for i, v in votes.items():
+        if i in claimed or blocks[i].area > MAX_BLOCK_M2:
+            continue
+        ranked = sorted(v.items(), key=lambda kv: -kv[1])
+        if len(ranked) > 1 and ranked[0][1] - ranked[1][1] < TIE_M:
+            ties += 1
+            continue
+        labels[i] = ranked[0][0]
+    for _ in range(FILL_ROUNDS):
+        new: dict[int, str] = {}
+        for i, block in enumerate(blocks):
+            if i in labels or i in claimed or block.area > MAX_BLOCK_M2:
+                continue
+            weight: dict[str, float] = defaultdict(float)
+            for j, length in edges[i].items():
+                if j in labels:
+                    weight[labels[j]] += length
+            if not weight:
+                continue
+            ranked = sorted(weight.items(), key=lambda kv: -kv[1])
+            if len(ranked) == 1 or ranked[0][1] - ranked[1][1] >= TIE_M:
+                new[i] = ranked[0][0]
+        if not new:
+            break
+        labels.update(new)
+    return labels, ties
 
 
 def locate_seed(blocks: list, tree: STRtree, point) -> tuple[int | None, float]:
@@ -259,6 +319,54 @@ def draw(blocks: list, graph: dict, seeds: dict, overrides: dict) -> Drawing:
         elif mine.get(tid):
             out.polygons[tid] = unary_union([blocks[i] for i in mine[tid]])
     return out
+
+
+def draw_from_streets(blocks: list, streets: list, walls: list, rules: list, seeds: dict, overrides: dict):
+    """Territories from the Sheet's street rules alone. -> (Drawing, unmatched street labels, tied blocks).
+
+    rules: [{"street", "settlement", "territories": [ids]}], one per street that has rules. A street whose
+    rules all point to one territory is that territory's; a street split between territories (odd/even
+    sides, number ranges) is a border street and claims nothing. A block goes to the territory owning most
+    of its edge (see label_blocks). Rail, water and the city boundary stay walls for the gap filling.
+    """
+    claims, unmatched = [], []
+    for row in rules:
+        name, settlement = str(row.get("street", "")).strip(), str(row.get("settlement", "")).strip()
+        key, skey = slug(name), slug(settlement)
+        lines = [s["line"] for s in streets if s["key"] == key and compatible(skey, s["skey"])]
+        if not lines:
+            unmatched.append(name + (f" ({settlement})" if settlement else ""))
+            continue
+        owners = {str(t) for t in row["territories"]}
+        if len(owners) == 1:
+            claims.append((next(iter(owners)), unary_union(lines)))
+
+    out = Drawing()
+    reps = np.array([b.representative_point() for b in blocks], dtype=object)
+    claimed: set[int] = set()
+    for tid, geom in overrides.items():
+        inside = shapely.contains(geom, reps) if len(blocks) else []
+        claimed.update(int(i) for i in np.flatnonzero(inside))
+        out.sources[tid] = "override"
+    for tid in seeds:
+        out.sources.setdefault(tid, "streets")
+        out.seeds[tid] = None
+
+    edges = open_edges(blocks, walls)
+    votes = votes_from_streets(blocks, STRtree(blocks), [c for c in claims if c[0] not in overrides])
+    labels, ties = label_blocks(blocks, edges, votes, claimed)
+
+    mine: dict[str, list[int]] = defaultdict(list)
+    for i, tid in sorted(labels.items()):
+        mine[tid].append(i)
+    out.unassigned = [i for i in range(len(blocks)) if i not in labels and i not in claimed]
+    for tid in out.sources:
+        out.blocks_of[tid] = mine.get(tid, [])
+        if tid in overrides:
+            out.polygons[tid] = overrides[tid]
+        elif mine.get(tid):
+            out.polygons[tid] = unary_union([blocks[i] for i in mine[tid]])
+    return out, sorted(set(unmatched)), ties
 
 
 def _merge_conflicts(items: list) -> list:
@@ -414,13 +522,16 @@ def read_json(path: Path, what: str):
         raise ValueError(f"{what} ({path.name}): није исправан JSON ({exc})") from exc
 
 
-def load_input(path: Path) -> tuple[list, list]:
+def load_input(path: Path) -> tuple[list, list, list | None]:
+    """-> (territories, scope, rules). `rules` is None unless the input asks to draw from the streets alone."""
     data = read_json(path, "улаз")
-    territories, scope = data.get("territories"), data.get("scope", [])
+    territories, scope, rules = data.get("territories"), data.get("scope", []), data.get("rules")
     if not isinstance(territories, list) or not territories:
         raise ValueError(f"{path.name}: „territories“ мора бити непразна листа")
     if not isinstance(scope, list):
         raise ValueError(f"{path.name}: „scope“ мора бити листа")
+    if rules is not None and not isinstance(rules, list):
+        raise ValueError(f"{path.name}: „rules“ мора бити листа")
     seen = set()
     for t in territories:
         tid = str(t.get("id", "")).strip() if isinstance(t, dict) else ""
@@ -433,7 +544,11 @@ def load_input(path: Path) -> tuple[list, list]:
     for row in scope:
         if not isinstance(row, dict) or str(row.get("territory", "")) not in seen:
             raise ValueError(f"{path.name}: ред Обима упућује на непознату територију: {row}")
-    return territories, scope
+    for row in rules or []:
+        ids = row.get("territories") if isinstance(row, dict) else None
+        if not isinstance(ids, list) or not ids or not {str(i) for i in ids} <= seen:
+            raise ValueError(f"{path.name}: правило упућује на непознату територију: {row}")
+    return territories, scope, rules
 
 
 def load_override(path: Path):
@@ -484,8 +599,9 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
     walls = [g for k, g in zip(frame["kind"], frame.geometry) if k in ("railway", "waterway", "boundary")]
     boundary = unary_union([g for k, g in zip(frame["kind"], frame.geometry) if k == "boundary"])
 
-    territories, scope = load_input(input_path)
-    scope_barriers, problems = match_scope(streets, scope)
+    territories, scope, rules = load_input(input_path)
+    from_streets = rules is not None
+    scope_barriers, problems = ([], []) if from_streets else match_scope(streets, scope)
     if problems:
         print("✖ Обим:\n" + "\n".join(f"    • {p}" for p in problems), file=sys.stderr)
         return 1
@@ -493,7 +609,7 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
     seeds = {}
     for t in territories:
         cap = t.get("capital")
-        seeds[str(t["id"])] = None if cap is None else gpd.GeoSeries(
+        seeds[str(t["id"])] = None if cap is None or from_streets else gpd.GeoSeries(
             [Point(float(cap["lng"]), float(cap["lat"]))], crs="EPSG:4326").to_crs(metric).iloc[0]
 
     overrides = {}
@@ -503,8 +619,12 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
             overrides[tid] = gpd.GeoSeries([load_override(path)], crs="EPSG:4326").to_crs(metric).iloc[0]
 
     blocks = split_blocks([s["line"] for s in streets] + walls)
-    graph = block_graph(blocks, scope_barriers + walls)
-    drawing = draw(blocks, graph, seeds, overrides)
+    unmatched, ties = [], 0
+    if from_streets:
+        drawing, unmatched, ties = draw_from_streets(blocks, streets, walls, rules, seeds, overrides)
+    else:
+        graph = block_graph(blocks, scope_barriers + walls)
+        drawing = draw(blocks, graph, seeds, overrides)
     internal = find_internal(streets, drawing.polygons)
     border = find_border(streets, drawing.polygons)
     for c in drawing.conflicts:
@@ -556,13 +676,22 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
             note = "  ! нема престонице"
         elif s["source"] == "auto" and s["capital"]["block"] is None:
             note = "  ! престоница није близу ниједног блока"
-        elif s["touchesCityBoundary"]:
+        elif s["touchesCityBoundary"] and s["source"] != "streets":
             note = "  ! додирује границу града (обим можда није затворен)"
         print(f"  {tid}: {s['source']}, блокова {s['blocks']}, {s['areaM2']} m²{note}")
     for c in drawing.conflicts:
         print(f"  ! блокови које деле територије {', '.join(c['territories'])}: {len(c['blocks'])}")
     if drawing.unassigned:
         print(f"  ! блокова без територије: {report['unassigned']['blocks']}")
+    if from_streets:
+        empty = [tid for tid in seeds if tid not in drawing.polygons]
+        if empty:
+            print(f"  ! територије без иједног блока (нема им додељених улица у OSM мрежи): {', '.join(empty)}")
+        if ties:
+            print(f"  ! блокова између две територије без премоћи: {ties}")
+        if unmatched:
+            print("  ! улице из Правила којих нема у OSM мрежи (проверите писање):\n"
+                  + "\n".join(f"      • {name}" for name in unmatched))
     return 0
 
 
