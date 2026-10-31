@@ -40,12 +40,33 @@ function useRemote<T>(key: string, load: () => Promise<T>): Remote<T> {
       .then((value) => ({ status: 'ready' as const, value }))
       .catch((e) => ({
         status: 'error' as const,
-        message: e instanceof DataError ? e.message : 'Подаци тренутно нису доступни.',
+        message:
+          e instanceof DataError
+            ? e.message
+            : navigator.onLine
+              ? 'Подаци тренутно нису доступни.'
+              : 'Нисте на мрежи, а ови подаци још нису сачувани на уређају. Отворите апликацију једном са интернетом.',
       }))
       .then((result) => { if (alive) setDone({ key, result }); });
     return () => { alive = false; };
   }, [key]);
   return done && done.key === key ? done.result : { status: 'loading' };
+}
+
+/** False while the browser reports no network connection. */
+function useOnline(): boolean {
+  const [online, setOnline] = useState(() => navigator.onLine);
+  useEffect(() => {
+    const on = () => setOnline(true);
+    const off = () => setOnline(false);
+    window.addEventListener('online', on);
+    window.addEventListener('offline', off);
+    return () => {
+      window.removeEventListener('online', on);
+      window.removeEventListener('offline', off);
+    };
+  }, []);
+  return online;
 }
 
 /** City from the link if it exists, else the last chosen city if it still exists, else the first one in the list. */
@@ -76,6 +97,7 @@ function Cities({ cities }: { cities: CityRef[] }) {
     return { data, resolver: createResolver(data) };
   });
   const current = cities.find((c) => c.id === cityId)!;
+  const online = useOnline();
 
   // Back/Forward or a pasted link pointing at another city.
   useEffect(() => {
@@ -95,6 +117,7 @@ function Cities({ cities }: { cities: CityRef[] }) {
   return (
     <main>
       <h1>Територије · {current.name}</h1>
+      {!online && <p class="warn" role="status">Нисте на мрежи. Приказују се подаци сачувани на уређају.</p>}
       {cities.length > 1 && (
         <>
           <label for="city">Град</label>
