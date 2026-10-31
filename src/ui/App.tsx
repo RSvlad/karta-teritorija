@@ -6,6 +6,7 @@ import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
+import { formatDistance, nearest } from '../geo/geo';
 import { useRoute } from './route';
 import type { Route } from './route';
 // Type only: MapView (and MapLibre with it) is loaded on demand by MapSection.
@@ -473,10 +474,64 @@ function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: 
   );
 }
 
+const ME_KEY = 'moj-paroh:me';
+
+/** "Моје": the person the user chose as themselves, remembered per city in this browser only. */
+function readMe(cityId: string): string | null {
+  try {
+    return localStorage.getItem(`${ME_KEY}:${cityId}`) || null;
+  } catch {
+    return null; // storage blocked: the choice just is not remembered
+  }
+}
+
+function saveMe(cityId: string, name: string | null): void {
+  try {
+    if (name) localStorage.setItem(`${ME_KEY}:${cityId}`, name);
+    else localStorage.removeItem(`${ME_KEY}:${cityId}`);
+  } catch {
+    /* storage blocked: see readMe */
+  }
+}
+
+/** State of "Where am I?". The position lives only in memory: it is never stored or sent anywhere. */
+type Fix =
+  | { state: 'idle' }
+  | { state: 'busy' }
+  | { state: 'error'; message: string }
+  | { state: 'done'; point: { lat: number; lng: number } };
+
+function locateErrorText(e: GeolocationPositionError): string {
+  if (e.code === e.PERMISSION_DENIED) {
+    return 'Приступ локацији је одбијен. Дозволите га за ову страницу у подешавањима прегледача и покушајте поново.';
+  }
+  if (e.code === e.TIMEOUT) return 'Одређивање локације је предуго трајало. Покушајте поново, по могућству напољу.';
+  return 'Локација тренутно није доступна. Проверите да ли је GPS укључен.';
+}
+
+function NearestCapital({ place, meters, resolver }: { place: Place; meters: number; resolver: Resolver }) {
+  const territory = resolver.territories.get(place.territoryId);
+  return (
+    <article class="card">
+      <h2 class="card-title">Најближа престоница</h2>
+      <p>
+        <span aria-hidden="true">★ </span>
+        <strong>{place.name}</strong>, {place.address}
+      </p>
+      <p class="muted">
+        {formatDistance(meters)} ваздушном линијом{territory ? ` · територија ${territory.id} „${territory.name}“` : ''}
+      </p>
+      <PlaceLinks place={place} />
+    </article>
+  );
+}
+
 /**
  * Map of the city's territories. MapLibre is a separate chunk that is fetched only when the map is opened,
  * so the search page stays small. The territories are also listed as buttons: the map canvas is not keyboard-friendly.
  * A click on the map opens the same cards as the search (bottom sheet on a phone, side panel on a desktop).
+ * Filters (territory, assignee, "mine") narrow what the map and the list show; "Where am I?" asks the browser for
+ * the GPS position once, finds the territory containing it and the nearest capital, and keeps nothing.
  */
 function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData; resolver: Resolver }) {
   const [open, setOpen] = useState(false);
@@ -484,6 +539,13 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
   const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<MapSelection | null>(null);
   const [showPoints, setShowPoints] = useState(true);
+  const [territoryFilter, setTerritoryFilter] = useState('');
+  const [assignee, setAssignee] = useState('');
+  const [me, setMe] = useState<string | null>(() => readMe(cityId));
+  const [onlyMine, setOnlyMine] = useState(false);
+  const [fix, setFix] = useState<Fix>({ state: 'idle' });
+  const [located, setLocated] = useState<{ territoryId: string | null; polygons: boolean } | null>(null);
+  const locateRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open || View) return;
@@ -497,23 +559,156 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
     return () => { alive = false; };
   }, [open]);
 
-  const place = selected?.kind === 'place' ? resolver.places.find((p) => p.id === selected.id) : undefined;
-  const hasPoints = resolver.places.some((p) => p.kind !== 'capital');
   const territories = [...resolver.territories.values()];
+  const hasPoints = resolver.places.some((p) => p.kind !== 'capital');
+
+  // Everybody named in the data (defaults and per-rule overrides), and the territories each of them serves.
+  const people = useMemo(() => {
+    const names = new Set<string>();
+    for (const t of resolver.territories.values()) {
+      names.add(t.defaults.primary);
+      if (t.defaults.deputy) names.add(t.defaults.deputy);
+    }
+    for (const r of data.rules) if (r.assignee) names.add(r.assignee);
+    return [...names].sort((a, b) => a.localeCompare(b, 'sr'));
+  }, [data, resolver]);
+
+  const territoriesOf = (name: string): Set<string> => {
+    const ids = new Set<string>();
+    for (const t of resolver.territories.values()) {
+      if (t.defaults.primary === name || t.defaults.deputy === name) ids.add(t.id);
+    }
+    for (const r of data.rules) if (r.assignee === name) ids.add(r.territoryId);
+    return ids;
+  };
+
+  // null = no filter is set (everything is shown).
+  const visible = useMemo(() => {
+    const sets: Set<string>[] = [];
+    if (territoryFilter) sets.push(new Set([territoryFilter]));
+    if (assignee) sets.push(territoriesOf(assignee));
+    if (onlyMine && me) sets.push(territoriesOf(me));
+    if (sets.length === 0) return null;
+    return new Set([...sets[0]!].filter((id) => sets.every((s) => s.has(id))));
+  }, [territoryFilter, assignee, onlyMine, me, data, resolver]);
+
+  const place = selected?.kind === 'place' ? resolver.places.find((p) => p.id === selected.id) : undefined;
+
+  // A selection that the filters hide would leave a card for something not on the map.
+  useEffect(() => {
+    if (!selected || !visible) return;
+    const id = selected.kind === 'territory' ? selected.id : place?.territoryId;
+    if (id && !visible.has(id)) setSelected(null);
+  }, [visible]);
+
+  const resetFilters = () => {
+    setTerritoryFilter('');
+    setAssignee('');
+    setOnlyMine(false);
+  };
+
+  const rememberMe = (name: string) => {
+    setMe(name);
+    saveMe(cityId, name);
+    setAssignee('');
+    setOnlyMine(true);
+  };
+
+  const forgetMe = () => {
+    setMe(null);
+    saveMe(cityId, null);
+    setOnlyMine(false);
+  };
+
+  const locate = () => {
+    if (!('geolocation' in navigator)) {
+      setFix({ state: 'error', message: 'Овај прегледач не подржава одређивање локације.' });
+      return;
+    }
+    setOpen(true); // the map is needed to find the territory; MapLibre loads while the browser asks for permission
+    setSelected(null);
+    setLocated(null);
+    setFix({ state: 'busy' });
+    navigator.geolocation.getCurrentPosition(
+      (pos) => setFix({ state: 'done', point: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
+      (err) => setFix({ state: 'error', message: locateErrorText(err) }),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
+  };
+
+  const clearLocation = () => {
+    setFix({ state: 'idle' });
+    setLocated(null);
+  };
+
+  // Called by the map once it has looked for the territory containing the point.
+  const onLocated = (territoryId: string | null, polygons: boolean) => {
+    setLocated({ territoryId, polygons });
+    // The territory the user stands in must not be hidden by an old filter.
+    if (territoryId && visible && !visible.has(territoryId)) resetFilters();
+  };
+
+  const point = fix.state === 'done' ? fix.point : null;
+  const nearestCapital = useMemo(
+    () => (point ? nearest(resolver.places.filter((p) => p.kind === 'capital'), point) : null),
+    [point, resolver],
+  );
+
+  useEffect(() => {
+    if (point) locateRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [point]);
+
+  const shown = visible ? territories.filter((t) => visible.has(t.id)) : territories;
 
   return (
     <section class="map-section" aria-label="Мапа територија">
-      <button
-        type="button"
-        class="button secondary"
-        aria-expanded={open}
-        aria-controls="map-panel"
-        onClick={() => { setOpen(!open); setSelected(null); }}
-      >
-        {open ? 'Сакриј мапу' : 'Прикажи мапу'}
-      </button>
+      <div class="map-actions">
+        <button
+          type="button"
+          class="button secondary"
+          aria-expanded={open}
+          aria-controls="map-panel"
+          onClick={() => { setOpen(!open); setSelected(null); }}
+        >
+          {open ? 'Сакриј мапу' : 'Прикажи мапу'}
+        </button>
+        <button type="button" class="button" disabled={fix.state === 'busy'} onClick={locate}>
+          Где сам ја?
+        </button>
+      </div>
+      {fix.state === 'busy' && <p class="muted" role="status">Одређивање локације…</p>}
+      {fix.state === 'error' && <p class="error" role="alert">{fix.message}</p>}
       {open && (
         <div id="map-panel" class="map-panel">
+          {territories.length > 1 && (
+            <div class="map-filters">
+              <label>
+                Територија
+                <select value={territoryFilter} onChange={(e) => setTerritoryFilter(e.currentTarget.value)}>
+                  <option value="">Све</option>
+                  {territories.map((t) => <option key={t.id} value={t.id}>{t.id} {t.name}</option>)}
+                </select>
+              </label>
+              <label>
+                Задужени
+                <select value={assignee} onChange={(e) => setAssignee(e.currentTarget.value)}>
+                  <option value="">Сви</option>
+                  {people.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+              {me && (
+                <label class="inline">
+                  <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.currentTarget.checked)} />
+                  Само моје ({me})
+                </label>
+              )}
+              {assignee && assignee !== me && (
+                <button type="button" class="button secondary" onClick={() => rememberMe(assignee)}>Ово сам ја</button>
+              )}
+              {me && <button type="button" class="button secondary" onClick={forgetMe}>Заборави „моје“</button>}
+              {visible && <button type="button" class="button secondary" onClick={resetFilters}>Прикажи све</button>}
+            </div>
+          )}
           <div class="map-tools">
             {hasPoints && (
               <label class="inline">
@@ -521,25 +716,39 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
                 Прикажи остале тачке
               </label>
             )}
-            <ul class="plain territory-list" aria-label="Територије">
-              {territories.map((t) => (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    class="chip"
-                    aria-pressed={selected?.kind === 'territory' && selected.id === t.id}
-                    onClick={() => setSelected(selected?.kind === 'territory' && selected.id === t.id ? null : { kind: 'territory', id: t.id })}
-                  >
-                    <span class="swatch" style={{ background: t.color }} aria-hidden="true" />
-                    {t.id} {t.name}
-                  </button>
-                </li>
-              ))}
-            </ul>
+            {shown.length === 0 ? (
+              <p class="muted" role="status">Нема територија за изабране филтере.</p>
+            ) : (
+              <ul class="plain territory-list" aria-label="Територије">
+                {shown.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      class="chip"
+                      aria-pressed={selected?.kind === 'territory' && selected.id === t.id}
+                      onClick={() => setSelected(selected?.kind === 'territory' && selected.id === t.id ? null : { kind: 'territory', id: t.id })}
+                    >
+                      <span class="swatch" style={{ background: t.color }} aria-hidden="true" />
+                      {t.id} {t.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           <div class="map-layout">
             {View ? (
-              <View cityId={cityId} data={data} resolver={resolver} selected={selected} showPoints={showPoints} onSelect={setSelected} />
+              <View
+                cityId={cityId}
+                data={data}
+                resolver={resolver}
+                selected={selected}
+                showPoints={showPoints}
+                visible={visible}
+                userPoint={point}
+                onLocated={onLocated}
+                onSelect={setSelected}
+              />
             ) : loadFailed ? (
               <p class="error" role="alert">Мапа тренутно није доступна.</p>
             ) : (
@@ -557,6 +766,29 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
             )}
           </div>
         </div>
+      )}
+      {point && (
+        <section class="locate" ref={locateRef} aria-label="Ваша локација">
+          {located?.territoryId ? (
+            <>
+              <p role="status">Налазите се у територији {located.territoryId}.</p>
+              <TerritoryCard territoryId={located.territoryId} resolver={resolver} city={data.name} updated={data.updated} />
+            </>
+          ) : located?.polygons ? (
+            <p role="status">Налазите се ван свих територија.</p>
+          ) : located || loadFailed ? (
+            <p class="warn" role="status">Територију није могуће одредити: мапа са границама није доступна.</p>
+          ) : (
+            <p class="muted" role="status">Одређивање територије…</p>
+          )}
+          {nearestCapital ? (
+            <NearestCapital place={nearestCapital.item} meters={nearestCapital.meters} resolver={resolver} />
+          ) : (
+            <p class="muted">Најближа престоница се не може одредити: ни једна нема координате.</p>
+          )}
+          <p class="muted">Локација се користи само у овом прегледачу: не шаље се нигде и не чува се.</p>
+          <button type="button" class="button secondary" onClick={clearLocation}>Уклони локацију</button>
+        </section>
       )}
     </section>
   );

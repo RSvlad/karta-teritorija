@@ -5,6 +5,8 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { CityData, Place, Resolver } from '../resolver';
+import { containsPoint, polygonsOf } from '../geo/geo';
+import type { Geometry } from '../geo/geo';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -18,10 +20,6 @@ const STYLE_URL = import.meta.env.VITE_MAP_STYLE || 'https://tiles.openfreemap.o
 const UNASSIGNED_COLOR = '#9e9e9e';
 const FALLBACK_VIEW = { center: [20.46, 44.8] as [number, number], zoom: 6 }; // Serbia, until data arrives
 
-interface Geometry {
-  type: 'Polygon' | 'MultiPolygon';
-  coordinates: number[][][] | number[][][][];
-}
 interface Feature {
   type: 'Feature';
   properties: { id?: string; source?: string };
@@ -32,9 +30,6 @@ interface Collection {
   features: Feature[];
 }
 type Bounds = [number, number, number, number]; // west, south, east, north
-
-const polygonsOf = (g: Geometry): number[][][][] =>
-  g.type === 'Polygon' ? [g.coordinates as number[][][]] : (g.coordinates as number[][][][]);
 
 function boundsOf(features: Feature[]): Bounds | null {
   let b: Bounds | null = null;
@@ -85,19 +80,30 @@ interface Props {
   selected: MapSelection | null;
   /** Show the smaller markers (collection points, other); capitals are always shown. */
   showPoints: boolean;
+  /** Territories to show (filters); null = all. Layers, labels and markers of the others are hidden. */
+  visible: ReadonlySet<string> | null;
+  /** The user's GPS position, if they asked "Where am I?". It is only drawn, never stored or sent. */
+  userPoint: { lat: number; lng: number } | null;
+  /** Territory containing `userPoint` (null = outside all of them; `polygons` false = the map has none to look in). */
+  onLocated: (territoryId: string | null, polygons: boolean) => void;
   onSelect: (s: MapSelection | null) => void;
 }
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
-export default function MapView({ cityId, data, resolver, selected, showPoints, onSelect }: Props) {
+export default function MapView({ cityId, data, resolver, selected, showPoints, visible, userPoint, onLocated, onSelect }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<PlaceMarker[]>([]);
+  const labelsRef = useRef<{ id: string; el: HTMLElement }[]>([]);
+  const featuresRef = useRef<{ id: string; geometry: Geometry }[]>([]);
+  const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const boundsRef = useRef(new Map<string, Bounds>());
   // Listeners are registered once; they call the latest callback through the ref.
   const selectRef = useRef(onSelect);
   selectRef.current = onSelect;
+  const locatedRef = useRef(onLocated);
+  locatedRef.current = onLocated;
   const [status, setStatus] = useState<Status>({ kind: 'loading' });
 
   useEffect(() => {
@@ -125,6 +131,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
         return { ...f, properties: { id, color: territory?.color ?? UNASSIGNED_COLOR, assigned: !!territory } };
       });
       const bounds = boundsOf(features);
+      featuresRef.current = features.filter((f) => f.properties.assigned).map((f) => ({ id: f.properties.id, geometry: f.geometry }));
 
       map = new maplibregl.Map({
         container: box.current,
@@ -176,6 +183,7 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
         el.setAttribute('aria-hidden', 'true');
         el.textContent = `${t.id} ${t.name}`;
         new maplibregl.Marker({ element: el }).setLngLat(spot).addTo(map);
+        labelsRef.current.push({ id: t.id, el });
       }
 
       // Capital = star, other points = smaller dot. Places the pipeline could not geocode have no marker.
@@ -202,14 +210,50 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
       map?.remove();
       mapRef.current = null;
       markersRef.current = [];
+      labelsRef.current = [];
+      featuresRef.current = [];
+      userMarkerRef.current = null;
       boundsRef.current.clear();
     };
   }, [cityId, data]);
 
-  // Layer switch for the smaller markers.
+  // Layer switch for the smaller markers, and the territory filter for everything on the map.
   useEffect(() => {
-    for (const { place, el } of markersRef.current) el.hidden = place.kind !== 'capital' && !showPoints;
-  }, [showPoints, status.kind]);
+    for (const { place, el } of markersRef.current) {
+      el.hidden = (place.kind !== 'capital' && !showPoints) || (!!visible && !visible.has(place.territoryId));
+    }
+    for (const { id, el } of labelsRef.current) el.hidden = !!visible && !visible.has(id);
+    const map = mapRef.current;
+    if (!map || status.kind !== 'ready') return;
+    const shown = visible ? ['in', ['get', 'id'], ['literal', [...visible]]] : null;
+    map.setFilter('territories-fill', shown as never);
+    map.setFilter('territories-line', shown as never);
+  }, [showPoints, visible, status.kind]);
+
+  // "Where am I?": the territory containing the point (same ids as the search), marker and camera.
+  useEffect(() => {
+    userMarkerRef.current?.remove();
+    userMarkerRef.current = null;
+    const map = mapRef.current;
+    if (userPoint && status.kind === 'error') locatedRef.current(null, false); // no polygons to look in
+    if (!userPoint || !map || status.kind !== 'ready') return;
+    const hit = featuresRef.current.find((f) => containsPoint(f.geometry, userPoint.lng, userPoint.lat));
+    const el = document.createElement('div');
+    el.className = 'map-me';
+    el.setAttribute('role', 'img');
+    el.setAttribute('aria-label', 'Ваша локација');
+    userMarkerRef.current = new maplibregl.Marker({ element: el }).setLngLat([userPoint.lng, userPoint.lat]).addTo(map);
+    const b = hit && boundsRef.current.get(hit.id);
+    if (b) {
+      map.fitBounds(
+        [Math.min(b[0], userPoint.lng), Math.min(b[1], userPoint.lat), Math.max(b[2], userPoint.lng), Math.max(b[3], userPoint.lat)],
+        { padding: 60, animate: !reducedMotion(), maxZoom: 16 },
+      );
+    } else {
+      map.easeTo({ center: [userPoint.lng, userPoint.lat], zoom: Math.max(map.getZoom(), 13), duration: reducedMotion() ? 0 : 400 });
+    }
+    locatedRef.current(hit?.id ?? null, true);
+  }, [userPoint, status.kind]);
 
   // Selection -> highlight and camera.
   useEffect(() => {
