@@ -1,0 +1,27 @@
+{
+  "city": "vrsac",
+  "source": "© OpenStreetMap contributors (ODbL)",
+  "addresses": {
+    "mirocki-put-40-vrsac": {
+      "address": "Мирочки пут 40, Вршац",
+      "lat": 45.119315,
+      "lng": 21.319851,
+      "via": "osm",
+      "fetched": "2026-10-31"
+    },
+    "trg-svetog-teodora-vrsackog-11-vrsac": {
+      "address": "Трг Светог Теодора Вршачког 11, Вршац",
+      "lat": 45.120481,
+      "lng": 21.295213,
+      "via": "osm",
+      "fetched": "2026-10-31"
+    },
+    "zive-jovanovica-1-vrsac": {
+      "address": "Живе Јовановића 1, Вршац",
+      "lat": 45.117105,
+      "lng": 21.289914,
+      "via": "osm",
+      "fetched": "2026-10-31"
+    }
+  }
+}
