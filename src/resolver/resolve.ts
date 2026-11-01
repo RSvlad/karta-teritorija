@@ -26,6 +26,11 @@ function bySegment(a: Rule, b: Rule): number {
   return af - bf || at - bt;
 }
 
+/** A rule with no bounds and no parity covers every number of the street. */
+export function coversAllNumbers(rule: Pick<Rule, 'from' | 'to' | 'parity'>): boolean {
+  return rule.from === null && rule.to === null && rule.parity === 'all';
+}
+
 export function formatRange(rule: Pick<Rule, 'from' | 'to' | 'parity'>): string {
   const { from, to, parity } = rule;
   const suffix = parity === 'odd' ? ' (непарни)' : parity === 'even' ? ' (парни)' : '';

@@ -1,4 +1,4 @@
-import { formatHouseNumber, formatRange } from '../resolver';
+import { coversAllNumbers, formatHouseNumber, formatRange } from '../resolver';
 import type { Assignment, Place, Resolution } from '../resolver';
 
 /** "★ Престоница: назив, адреса"; the territory is named only when the card spans several. */
@@ -12,7 +12,7 @@ function peopleText(a: Assignment): string {
 
 /** Person(s) and, when `withRange`, the number range the assignment covers. */
 function assigneeText(a: Assignment, withRange: boolean): string {
-  return `${peopleText(a)}${withRange && a.rule ? ' ' + formatRange(a.rule) : ''}`;
+  return `${peopleText(a)}${withRange && a.rule && !coversAllNumbers(a.rule) ? ' ' + formatRange(a.rule) : ''}`;
 }
 
 /**

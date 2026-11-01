@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
+import { coversAllNumbers, createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
 import type { Assignment, CityData, HouseNumber, Place, Resolution, Resolver, Street, TerritoryStreet } from '../resolver';
 import { createSearch, hitId, hitName } from '../search/search';
 import type { Hit } from '../search/search';
@@ -1018,7 +1018,7 @@ function ResultCard({ result, resolver, city, cityId, reportEmail, updated, onSh
           {result.assignments.map((a, i) => (
             <div key={i}>
               {(i === 0 || a.territory.id !== result.assignments[i - 1]!.territory.id) && <TerritoryHeading a={a} />}
-              <p><PeopleLine a={a} /> <span class="muted">{formatRange(a.rule!)}</span></p>
+              <p><PeopleLine a={a} />{!coversAllNumbers(a.rule!) && <> <span class="muted">{formatRange(a.rule!)}</span></>}</p>
               {a.rule?.note && <p class="muted">{a.rule.note}</p>}
             </div>
           ))}
