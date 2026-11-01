@@ -24,6 +24,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 CITIES_FILE = HERE / "cities.yml"
+SHEET_CITIES_FILE = HERE / "work" / "cities.json"  # from the Sheet's "Градови" tab, written by build-data.mjs
 CACHE_DIR = HERE / "cache"
 ID_PATTERN = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 
@@ -82,12 +83,21 @@ def summarize(index: list[dict]) -> list[str]:
     return lines
 
 
-def load_cities(path: Path = CITIES_FILE) -> dict[str, dict]:
+def load_cities(path: Path = CITIES_FILE, sheet_path: Path = SHEET_CITIES_FILE) -> dict[str, dict]:
+    """Cities from cities.yml (optional) with the Sheet's "Градови" tab (work/cities.json, written by the
+    build) on top: for the same id the Sheet's place and settlement levels win."""
     import yaml  # imported here so the helpers above need no third-party package
 
-    cities = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(cities, dict) or not cities:
-        raise ValueError(f"{path.name}: очекује се непразна мапа градова")
+    cities = (yaml.safe_load(path.read_text(encoding="utf-8")) or {}) if path.exists() else {}
+    if not isinstance(cities, dict):
+        raise ValueError(f"{path.name}: очекује се мапа градова")
+    if sheet_path.exists():
+        for city_id, city in json.loads(sheet_path.read_text(encoding="utf-8")).items():
+            cities[city_id] = {**(cities.get(city_id) or {}), **city}
+    if not cities:
+        raise ValueError(
+            f"нема градова: попуните cities.yml или покрените билд са SHEETS_ID ({show(sheet_path)} из листа „Градови“)"
+        )
     for city_id, city in cities.items():
         if not ID_PATTERN.match(str(city_id)):
             raise ValueError(f"{path.name}: ид града „{city_id}“ мора бити облика novi-sad")

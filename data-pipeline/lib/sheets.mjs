@@ -2,11 +2,10 @@
 // so the build needs no extra dependencies.
 import { createSign } from 'node:crypto';
 
-// drive.metadata.readonly is only for the Sheet's last-modified time (fetchModifiedDate); no file content.
-const SCOPE = [
-  'https://www.googleapis.com/auth/spreadsheets.readonly',
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
-].join(' ');
+// The build only reads values. drive.metadata.readonly (the Sheet's last-modified time, fetchModifiedDate) is
+// requested only by scripts/migrate-sheets.mjs, which passes it as `scope`.
+export const SHEETS_SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
+export const DRIVE_METADATA_SCOPE = 'https://www.googleapis.com/auth/drive.metadata.readonly';
 const b64url = (input) => Buffer.from(input).toString('base64url');
 
 export function parseCredentials(json) {
@@ -22,11 +21,11 @@ export function parseCredentials(json) {
   return key;
 }
 
-export async function getAccessToken(key, now = Math.floor(Date.now() / 1000)) {
+export async function getAccessToken(key, now = Math.floor(Date.now() / 1000), scope = SHEETS_SCOPE) {
   const tokenUri = key.token_uri ?? 'https://oauth2.googleapis.com/token';
   const unsigned = [
     b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' })),
-    b64url(JSON.stringify({ iss: key.client_email, scope: SCOPE, aud: tokenUri, iat: now, exp: now + 3600 })),
+    b64url(JSON.stringify({ iss: key.client_email, scope, aud: tokenUri, iat: now, exp: now + 3600 })),
   ].join('.');
   const signature = createSign('RSA-SHA256').update(unsigned).sign(key.private_key, 'base64url');
 
@@ -43,8 +42,34 @@ export async function getAccessToken(key, now = Math.floor(Date.now() / 1000)) {
 }
 
 /**
+ * Reads several tabs of one Sheet with two requests, however many tabs there are: the tab list, then one
+ * `values:batchGet`. Returns { [title]: 2D array of strings (header first) | null }; a tab that does not
+ * exist is null (batchGet would fail the whole request for it, so only existing tabs are asked for).
+ */
+export async function fetchTabs(token, spreadsheetId, titles) {
+  const base = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}`;
+  const get = async (url, what) => {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`${what} није успело (${res.status}): ${await res.text()}`);
+    return res.json();
+  };
+  const meta = await get(`${base}?fields=sheets.properties.title`, 'читање листова Sheet-а');
+  const existing = new Set((meta.sheets ?? []).map((s) => s.properties.title));
+  const present = titles.filter((t) => existing.has(t));
+  const result = Object.fromEntries(titles.map((t) => [t, null]));
+  if (present.length === 0) return result;
+  const query = present.map((t) => `ranges=${encodeURIComponent(t)}`).join('&');
+  const data = await get(`${base}/values:batchGet?${query}`, 'читање листова');
+  (data.valueRanges ?? []).forEach((range, i) => {
+    result[present[i]] = range.values ?? [];
+  });
+  return result;
+}
+
+/**
  * Returns the sheet as a 2D array of strings, header row first.
  * With `optional`, a tab that does not exist gives null instead of an error.
+ * One request per tab: the build uses fetchTabs; this is for scripts that read other Sheets (migration).
  */
 export async function fetchSheet(token, spreadsheetId, title, { optional = false } = {}) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(spreadsheetId)}/values/${encodeURIComponent(title)}`;

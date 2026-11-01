@@ -42,6 +42,15 @@ const COLUMNS = {
     from: ['од'],
     to: ['до'],
   },
+  // The "Градови" tab of the central Sheet, see lib/central.mjs.
+  cities: {
+    id: ['ид', 'id'],
+    name: ['назив', 'име'],
+    place: ['place'],
+    levels: ['насеља', 'насеље'],
+    reportEmail: ['reportemail', 'имејл', 'email'],
+    updated: ['ажурирано'],
+  },
 };
 
 const REQUIRED = {
@@ -49,6 +58,7 @@ const REQUIRED = {
   rules: ['street', 'territory'],
   places: ['name', 'territory', 'address'],
   scope: ['territory', 'street'],
+  cities: ['id', 'name'],
 };
 
 const KIND = new Map([
@@ -84,7 +94,8 @@ const clean = (v) => String(v ?? '').replace(/\s+/g, ' ').trim();
 
 /**
  * Turns a raw 2D array (header row first) into [{ row, values: { field: string } }].
- * `row` is the 1-based Sheet row number, used in error messages.
+ * `row` is the 1-based Sheet row number, used in error messages. A table split out of a shared tab
+ * (lib/central.mjs) carries `rowNumbers` (the Sheet row of every body row), so errors still name the real row.
  */
 export function readTable(kind, sheetTitle, raw, problems) {
   const spec = COLUMNS[kind];
@@ -108,7 +119,7 @@ export function readTable(kind, sheetTitle, raw, problems) {
       values[field] = index[field] === undefined ? '' : clean(cells[index[field]]);
     }
     if (Object.values(values).every((v) => v === '')) return;
-    rows.push({ row: i + 2, values });
+    rows.push({ row: raw.rowNumbers?.[i] ?? i + 2, values });
   });
   return rows;
 }

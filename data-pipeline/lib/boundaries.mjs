@@ -18,7 +18,7 @@ export function parseBoundaries(raw, territoryIds) {
   const problems = [];
   const out = new Map();
   raw.slice(1).forEach((r, i) => {
-    const row = i + 2;
+    const row = raw.rowNumbers?.[i] ?? i + 2;
     const id = String(r[idCol] ?? '').trim();
     const text = String(r[geoCol] ?? '').trim();
     if (!id && !text) return;
