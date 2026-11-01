@@ -13,9 +13,17 @@ import type { Route } from './route';
 import { nextTheme, setScript, setTheme, tx, useScript, useTheme } from './prefs';
 import type { Theme } from './prefs';
 // Type only: MapView (and MapLibre with it) is loaded on demand by MapSection.
-import type { MapSelection } from './MapView';
+import type { MapFocus, MapSelection } from './MapView';
 
 const CITY_KEY = 'moj-paroh:city';
+
+/** "Прикажи на мапи" on a result card: the capitals to frame, and the one the user asked about (selected). */
+interface MapRequest extends MapFocus {
+  cityId: string;
+  selected: string;
+}
+
+const hasPoint = (p: Place): boolean => p.lat !== undefined && p.lng !== undefined;
 
 /** Entry of data/cities.json (produced by the pipeline): the cities that have a data file. */
 interface CityRef {
@@ -203,6 +211,8 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
   // Combobox state: highlighted option (-1 = none) and whether Escape has dismissed the list.
   const [active, setActive] = useState(-1);
   const [open, setOpen] = useState(true);
+  // Set by "Прикажи на мапи" on a result card; the map section below reacts to every new request.
+  const [mapRequest, setMapRequest] = useState<MapRequest | null>(null);
 
   const suggestions = useMemo(() => search(query), [search, query]);
   // A unique exact match counts as chosen without a click.
@@ -357,11 +367,21 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
             city={data.name}
             reportEmail={data.reportEmail}
             updated={data.updated}
+            onShowOnMap={(capital, all) =>
+              setMapRequest((prev) => ({
+                cityId,
+                selected: capital.id,
+                placeIds: all.filter(hasPoint).map((p) => p.id),
+                seq: (prev?.seq ?? 0) + 1,
+              }))
+            }
           />
         ) : null}
       </section>
       {/* A city that only has its streets (no territories yet) has nothing to draw or locate. */}
-      {resolver.territories.size > 0 && <MapSection key={cityId} cityId={cityId} data={data} resolver={resolver} />}
+      {resolver.territories.size > 0 && (
+        <MapSection key={cityId} cityId={cityId} data={data} resolver={resolver} request={mapRequest} />
+      )}
       <footer class="muted">Ажурирано: {data.updated}</footer>
     </>
   );
@@ -416,9 +436,13 @@ function mapUrl(p: Place): string {
   return `https://www.openstreetmap.org/search?query=${encodeURIComponent(p.address)}`;
 }
 
-function PlaceLinks({ place }: { place: Place }) {
+function PlaceLinks({ place, onShowOnMap }: { place: Place; onShowOnMap?: () => void }) {
   return (
     <div class="actions">
+      {/* Only for a point with coordinates; without them the text-address links below still work. */}
+      {onShowOnMap && hasPoint(place) && (
+        <button type="button" class="button" onClick={onShowOnMap}>Прикажи на мапи</button>
+      )}
       <a class="button" href={navigationUrl(place)} target="_blank" rel="noopener">Навигација</a>
       <a class="button secondary" href={mapUrl(place)} target="_blank" rel="noopener">На мапи</a>
     </div>
@@ -439,7 +463,7 @@ function capitalsOf(result: Resolution, resolver: Resolver): Place[] {
   return [...capitals.values()];
 }
 
-function CapitalLine({ place, withTerritory }: { place: Place; withTerritory: boolean }) {
+function CapitalLine({ place, withTerritory, onShowOnMap }: { place: Place; withTerritory: boolean; onShowOnMap?: () => void }) {
   return (
     <div class="capital">
       <p>
@@ -447,7 +471,7 @@ function CapitalLine({ place, withTerritory }: { place: Place; withTerritory: bo
         Престоница{withTerritory ? ` (територија ${place.territoryId})` : ''}: <strong>{place.name}</strong>, {place.address}
       </p>
       {place.note && <p class="muted">{place.note}</p>}
-      <PlaceLinks place={place} />
+      <PlaceLinks place={place} onShowOnMap={onShowOnMap} />
     </div>
   );
 }
@@ -618,11 +642,14 @@ function NearestCapital({ place, meters, resolver }: { place: Place; meters: num
  * Filters (territory, assignee, "mine") narrow what the map and the list show; "Where am I?" asks the browser for
  * the GPS position once, finds the territory containing it and the nearest capital, and keeps nothing.
  */
-function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData; resolver: Resolver }) {
+function MapSection({ cityId, data, resolver, request }: {
+  cityId: string; data: CityData; resolver: Resolver; request: MapRequest | null;
+}) {
   const [open, setOpen] = useState(false);
   const [View, setView] = useState<typeof import('./MapView').default | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [selected, setSelected] = useState<MapSelection | null>(null);
+  const [focus, setFocus] = useState<MapFocus | null>(null);
   const [showPoints, setShowPoints] = useState(true);
   const [territoryFilter, setTerritoryFilter] = useState('');
   const [assignee, setAssignee] = useState('');
@@ -631,6 +658,7 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
   const [fix, setFix] = useState<Fix>({ state: 'idle' });
   const [located, setLocated] = useState<{ territoryId: string | null; polygons: boolean } | null>(null);
   const locateRef = useRef<HTMLElement>(null);
+  const sectionRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     if (!open || View) return;
@@ -692,6 +720,18 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
     setOnlyMine(false);
   };
 
+  // "Прикажи на мапи" on a result card: open the map, select that capital (its card and territory are shown)
+  // and frame every capital of the result. A filter that hides one of them is cleared.
+  useEffect(() => {
+    if (!request || request.cityId !== cityId) return;
+    const wanted = new Set(request.placeIds.map((id) => resolver.places.find((p) => p.id === id)?.territoryId));
+    if (visible && [...wanted].some((id) => id && !visible.has(id))) resetFilters();
+    setOpen(true); // MapLibre loads lazily, while the section scrolls into view
+    setSelected({ kind: 'place', id: request.selected });
+    setFocus({ placeIds: request.placeIds, seq: request.seq });
+    sectionRef.current?.scrollIntoView({ block: 'start', behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  }, [request]);
+
   const rememberMe = (name: string) => {
     setMe(name);
     saveMe(cityId, name);
@@ -712,6 +752,7 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
     }
     setOpen(true); // the map is needed to find the territory; MapLibre loads while the browser asks for permission
     setSelected(null);
+    setFocus(null);
     setLocated(null);
     setFix({ state: 'busy' });
     navigator.geolocation.getCurrentPosition(
@@ -746,14 +787,14 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
   const shown = visible ? territories.filter((t) => visible.has(t.id)) : territories;
 
   return (
-    <section class="map-section" aria-label="Мапа територија">
+    <section class="map-section" aria-label="Мапа територија" ref={sectionRef}>
       <div class="map-actions">
         <button
           type="button"
           class="button secondary"
           aria-expanded={open}
           aria-controls="map-panel"
-          onClick={() => { setOpen(!open); setSelected(null); }}
+          onClick={() => { setOpen(!open); setSelected(null); setFocus(null); }}
         >
           {open ? 'Сакриј мапу' : 'Прикажи мапу'}
         </button>
@@ -828,6 +869,7 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
                 data={data}
                 resolver={resolver}
                 selected={selected}
+                focus={focus}
                 showPoints={showPoints}
                 visible={visible}
                 userPoint={point}
@@ -939,8 +981,10 @@ function ShareBar({ title, text }: { title: string; text: string }) {
   );
 }
 
-function ResultCard({ result, resolver, city, reportEmail, updated }: {
+function ResultCard({ result, resolver, city, reportEmail, updated, onShowOnMap }: {
   result: Resolution; resolver: Resolver; city: string; reportEmail?: string; updated: string;
+  /** Show a capital on the map; the second argument is every capital of the result (all get framed). */
+  onShowOnMap?: (capital: Place, all: readonly Place[]) => void;
 }) {
   const title = `${result.street.name}${'house' in result && result.house ? ' ' + formatHouseNumber(result.house) : ''} · ${city}`;
   const capitals = capitalsOf(result, resolver);
@@ -1004,7 +1048,14 @@ function ResultCard({ result, resolver, city, reportEmail, updated }: {
       <h2 class="card-title">{title}</h2>
       <StaleWarning updated={updated} />
       {body}
-      {capitals.map((p) => <CapitalLine key={p.id} place={p} withTerritory={capitals.length > 1} />)}
+      {capitals.map((p) => (
+        <CapitalLine
+          key={p.id}
+          place={p}
+          withTerritory={capitals.length > 1}
+          onShowOnMap={onShowOnMap && (() => onShowOnMap(p, capitals))}
+        />
+      ))}
       {/* The page footer is hidden in print, so the date goes on the printed card itself. */}
       <p class="print-only">Ажурирано: {updated}</p>
       {/* key resets the "copied" note when the result changes. */}
