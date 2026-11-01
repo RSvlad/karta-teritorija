@@ -8,6 +8,7 @@ import type { CityData, Place, Resolver } from '../resolver';
 import { containsPoint, polygonsOf } from '../geo/geo';
 import type { Geometry } from '../geo/geo';
 import { tx, useScript } from './prefs';
+import { STYLE_URL } from './mapStyle';
 
 maplibregl.setWorkerUrl(workerUrl);
 
@@ -20,10 +21,6 @@ export interface MapFocus {
   seq: number;
 }
 
-// Quiet light basemap. OpenFreeMap is a free public service without an availability guarantee
-// (see its terms); VITE_MAP_STYLE swaps it for a self-hosted style/PMTiles without code changes.
-// tile.openstreetmap.org must not be used here.
-const STYLE_URL = import.meta.env.VITE_MAP_STYLE || 'https://tiles.openfreemap.org/styles/positron';
 const UNASSIGNED_COLOR = '#9e9e9e';
 const FALLBACK_VIEW = { center: [20.46, 44.8] as [number, number], zoom: 6 }; // Serbia, until data arrives
 

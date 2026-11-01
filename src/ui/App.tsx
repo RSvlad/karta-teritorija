@@ -8,7 +8,7 @@ import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
 import { capitalText, resultText } from './shareText';
 import { formatDistance, nearest } from '../geo/geo';
-import { PrintMaps } from './PrintMap';
+import { PrintMaps, preparePrintMaps } from './PrintMap';
 import { useRoute } from './route';
 import type { Route } from './route';
 import { nextTheme, setScript, setTheme, tx, useScript, useTheme } from './prefs';
@@ -946,12 +946,21 @@ async function copyText(text: string): Promise<boolean> {
 /**
  * Prints the card the button belongs to. The card is marked for the duration of the print dialog and the print
  * stylesheet hides everything else, so a card in the map panel prints as alone as one in the search results.
+ * The basemaps under its territory maps are drawn first (a few seconds at most, only the first time); if they
+ * cannot be, the card prints with the plain border drawings.
  */
-function printCard(button: HTMLElement): void {
+async function printCard(button: HTMLElement): Promise<void> {
   const card = button.closest<HTMLElement>('.card');
   if (!card) {
     window.print();
     return;
+  }
+  if (button.hasAttribute('aria-busy')) return; // already preparing this print
+  button.setAttribute('aria-busy', 'true');
+  try {
+    await preparePrintMaps(card);
+  } finally {
+    button.removeAttribute('aria-busy');
   }
   const clear = () => {
     card.classList.remove('print-target');

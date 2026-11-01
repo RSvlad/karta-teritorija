@@ -83,8 +83,10 @@ footer { margin-top: 2rem; font-size: .875rem; }
   .warn { background: none; color: #000; border: 1px solid #000; }
   .actions, .button { display: none; }
   .print-only { display: block; margin-top: 1rem; font-size: 10pt; }
-  /* Territory maps: vector, one per territory of the card, kept small enough that the card stays on one page. */
+  /* Territory maps: a basemap picture under the vector border, one per territory of the card, kept small enough
+     that the card stays on one page. */
   .print-maps { display: block; margin-top: 1rem; }
+  .print-maps:empty { display: none; }
   .print-map { margin: 0 0 .75rem; break-inside: avoid; }
   .print-map svg { display: block; width: 100%; max-height: 75mm; border: 1px solid #000;
     -webkit-print-color-adjust: exact; print-color-adjust: exact; }
