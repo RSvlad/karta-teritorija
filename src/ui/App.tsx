@@ -8,6 +8,7 @@ import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
 import { capitalText, resultText } from './shareText';
 import { formatDistance, nearest } from '../geo/geo';
+import { PrintMaps } from './PrintMap';
 import { useRoute } from './route';
 import type { Route } from './route';
 import { nextTheme, setScript, setTheme, tx, useScript, useTheme } from './prefs';
@@ -359,12 +360,13 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
         {query.trim() === '' ? null : !picked && !canList ? (
           <p class="muted">Улица или тачка није пронађена.</p>
         ) : place ? (
-          <PlaceCard place={place} resolver={resolver} city={data.name} updated={data.updated} />
+          <PlaceCard place={place} resolver={resolver} city={data.name} cityId={cityId} updated={data.updated} />
         ) : result ? (
           <ResultCard
             result={result}
             resolver={resolver}
             city={data.name}
+            cityId={cityId}
             reportEmail={data.reportEmail}
             updated={data.updated}
             onShowOnMap={(capital, all) =>
@@ -449,14 +451,23 @@ function PlaceLinks({ place, onShowOnMap }: { place: Place; onShowOnMap?: () => 
   );
 }
 
-/** Distinct territories of a resolution, in the order they are shown. */
-function capitalsOf(result: Resolution, resolver: Resolver): Place[] {
-  const assignments = result.kind === 'rules' ? result.assignments
+/** The assignments of a resolution, in the order they are shown. */
+function assignmentsOf(result: Resolution): Assignment[] {
+  return result.kind === 'rules' ? result.assignments
     : result.kind === 'linear' ? result.segments
     : result.kind === 'inherited' ? [result.assignment]
     : [];
+}
+
+/** Distinct territories of a resolution, in the order they are shown. */
+function territoryIdsOf(result: Resolution): string[] {
+  return [...new Set(assignmentsOf(result).map((a) => a.territory.id))];
+}
+
+/** Capitals of the territories of a resolution, one per territory that has one. */
+function capitalsOf(result: Resolution, resolver: Resolver): Place[] {
   const capitals = new Map<string, Place>();
-  for (const a of assignments) {
+  for (const a of assignmentsOf(result)) {
     const capital = resolver.capitalOf(a.territory.id);
     if (capital) capitals.set(capital.id, capital);
   }
@@ -487,7 +498,7 @@ function StaleWarning({ updated }: { updated: string }) {
   );
 }
 
-function PlaceCard({ place, resolver, city, updated }: { place: Place; resolver: Resolver; city: string; updated: string }) {
+function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; resolver: Resolver; city: string; cityId: string; updated: string }) {
   const territory = resolver.territories.get(place.territoryId)!;
   const title = `${place.name} · ${city}`;
   const kind = place.kind === 'capital' ? 'Престоница' : place.kind === 'collector' ? 'Сабирна тачка' : 'Тачка';
@@ -512,6 +523,7 @@ function PlaceCard({ place, resolver, city, updated }: { place: Place; resolver:
       </h2>
       <p><strong>{territory.defaults.primary}</strong></p>
       <PlaceLinks place={place} />
+      <PrintMaps cityId={cityId} territoryIds={[territory.id]} resolver={resolver} />
       <p class="print-only">Ажурирано: {updated}</p>
       <ShareBar key={text} title={title} text={text} />
     </article>
@@ -519,7 +531,7 @@ function PlaceCard({ place, resolver, city, updated }: { place: Place; resolver:
 }
 
 /** Card of a territory picked on the map: who is responsible, the capital and the other points. */
-function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: string; resolver: Resolver; city: string; updated: string }) {
+function TerritoryCard({ territoryId, resolver, city, cityId, updated }: { territoryId: string; resolver: Resolver; city: string; cityId: string; updated: string }) {
   const territory = resolver.territories.get(territoryId);
   if (!territory) return null;
   const capital = resolver.capitalOf(territory.id);
@@ -560,6 +572,7 @@ function TerritoryCard({ territoryId, resolver, city, updated }: { territoryId: 
           </ul>
         </>
       )}
+      <PrintMaps cityId={cityId} territoryIds={[territory.id]} resolver={resolver} />
       <p class="print-only">Ажурирано: {updated}</p>
       <ShareBar key={text} title={title} text={text} />
     </article>
@@ -885,9 +898,9 @@ function MapSection({ cityId, data, resolver, request }: {
               <aside class="map-sheet" aria-label="Детаљи изабраног на мапи">
                 <button type="button" class="button secondary close" onClick={() => setSelected(null)}>Затвори</button>
                 {place ? (
-                  <PlaceCard place={place} resolver={resolver} city={data.name} updated={data.updated} />
+                  <PlaceCard place={place} resolver={resolver} city={data.name} cityId={cityId} updated={data.updated} />
                 ) : (
-                  <TerritoryCard territoryId={selected.id} resolver={resolver} city={data.name} updated={data.updated} />
+                  <TerritoryCard territoryId={selected.id} resolver={resolver} city={data.name} cityId={cityId} updated={data.updated} />
                 )}
               </aside>
             )}
@@ -899,7 +912,7 @@ function MapSection({ cityId, data, resolver, request }: {
           {located?.territoryId ? (
             <>
               <p role="status">Налазите се у територији {located.territoryId}.</p>
-              <TerritoryCard territoryId={located.territoryId} resolver={resolver} city={data.name} updated={data.updated} />
+              <TerritoryCard territoryId={located.territoryId} resolver={resolver} city={data.name} cityId={cityId} updated={data.updated} />
             </>
           ) : located?.polygons ? (
             <p role="status">Налазите се ван свих територија.</p>
@@ -981,8 +994,8 @@ function ShareBar({ title, text }: { title: string; text: string }) {
   );
 }
 
-function ResultCard({ result, resolver, city, reportEmail, updated, onShowOnMap }: {
-  result: Resolution; resolver: Resolver; city: string; reportEmail?: string; updated: string;
+function ResultCard({ result, resolver, city, cityId, reportEmail, updated, onShowOnMap }: {
+  result: Resolution; resolver: Resolver; city: string; cityId: string; reportEmail?: string; updated: string;
   /** Show a capital on the map; the second argument is every capital of the result (all get framed). */
   onShowOnMap?: (capital: Place, all: readonly Place[]) => void;
 }) {
@@ -1056,6 +1069,7 @@ function ResultCard({ result, resolver, city, reportEmail, updated, onShowOnMap 
           onShowOnMap={onShowOnMap && (() => onShowOnMap(p, capitals))}
         />
       ))}
+      <PrintMaps cityId={cityId} territoryIds={territoryIdsOf(result)} resolver={resolver} />
       {/* The page footer is hidden in print, so the date goes on the printed card itself. */}
       <p class="print-only">Ажурирано: {updated}</p>
       {/* key resets the "copied" note when the result changes. */}
