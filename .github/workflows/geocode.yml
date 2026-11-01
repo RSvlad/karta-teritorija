@@ -31,7 +31,7 @@ jobs:
       - run: node data-pipeline/build-data.mjs
         env:
           GOOGLE_SERVICE_ACCOUNT: ${{ secrets.GOOGLE_SERVICE_ACCOUNT }}
-          SHEETS_CITIES: ${{ secrets.SHEETS_CITIES }}
+          SHEETS_ID: ${{ secrets.SHEETS_ID }}
           PIPELINE_REQUIRED: '1'
 
       # geocode.py exits 1 when some address failed; the ones that worked are still cached.
