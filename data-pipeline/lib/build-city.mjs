@@ -32,6 +32,8 @@ const COLUMNS = {
     territory: ['територија'],
     kind: ['врста', 'тип'],
     address: ['адреса'],
+    lat: ['ширина', 'lat', 'latitude'],
+    lng: ['дужина', 'lng', 'lon', 'longitude'],
     note: ['напомена'],
   },
   // The "Обим" tab: streets that bound a territory (barriers for territories.py), see lib/territories-input.mjs.
@@ -276,7 +278,18 @@ function buildPlaces(rows, territoryIds, territories, problems) {
       if (prev) problems.push(`${where}: територија „${v.territory}“ већ има престоницу (ред ${prev})`);
       else capitals.set(v.territory, row);
     }
-    checked.push({ row, v, kind: kind ?? 'other' });
+    // Optional coordinates typed into the Sheet ("ширина"/"дужина"); both or neither. A decimal comma is accepted.
+    const num = (s) => (s === '' ? null : Number(s.replace(',', '.')));
+    const lat = num(v.lat), lng = num(v.lng);
+    let point = null;
+    if (lat !== null || lng !== null) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+        problems.push(`${where}: координате „${v.lat}“, „${v.lng}“ нису исправне (ширина и дужина као децимални бројеви)`);
+      } else {
+        point = { lat, lng };
+      }
+    }
+    checked.push({ row, v, kind: kind ?? 'other', point });
   }
   for (const t of territories) {
     if (!capitals.has(t.id)) problems.push(`Тачке: територија „${t.id}“ (${t.name}) нема престоницу`);
@@ -286,7 +299,7 @@ function buildPlaces(rows, territoryIds, territories, problems) {
   for (const { v } of checked) nameCount.set(slug(v.name), (nameCount.get(slug(v.name)) ?? 0) + 1);
   const used = new Map();
   const places = [];
-  for (const { row, v, kind } of checked) {
+  for (const { row, v, kind, point } of checked) {
     if (!v.name || !v.address || !territoryIds.has(v.territory)) continue; // already reported
     const base = slug(v.name);
     const id = nameCount.get(base) > 1 ? `${base}-${slug(v.territory)}` : base;
@@ -305,6 +318,7 @@ function buildPlaces(rows, territoryIds, territories, problems) {
       kind,
       territoryId: v.territory,
       address: v.address,
+      ...(point ?? {}),
       ...(v.note && { note: v.note }),
     });
   }

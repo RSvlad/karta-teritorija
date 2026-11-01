@@ -32,6 +32,7 @@ export function loadGeocodeCache(cityId, dir = CACHE_DIR) {
 export function attachCoordinates(data, cache) {
   const missing = [];
   const places = data.places.map((p) => {
+    if (Number.isFinite(p.lat) && Number.isFinite(p.lng)) return p; // typed into the Sheet: it wins over the cache
     const hit = cache?.addresses[addressKey(p.address)];
     if (hit && Number.isFinite(hit.lat) && Number.isFinite(hit.lng)) return { ...p, lat: hit.lat, lng: hit.lng };
     missing.push(p);
