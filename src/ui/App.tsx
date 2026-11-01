@@ -6,6 +6,7 @@ import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
+import { capitalText, resultText } from './shareText';
 import { formatDistance, nearest } from '../geo/geo';
 import { useRoute } from './route';
 import type { Route } from './route';
@@ -436,11 +437,6 @@ function capitalsOf(result: Resolution, resolver: Resolver): Place[] {
     if (capital) capitals.set(capital.id, capital);
   }
   return [...capitals.values()];
-}
-
-/** "★ Престоница: назив, адреса"; the territory is named only when the card spans several. */
-function capitalText(p: Place, withTerritory: boolean): string {
-  return `★ Престоница${withTerritory ? ` (територија ${p.territoryId})` : ''}: ${p.name}, ${p.address}`;
 }
 
 function CapitalLine({ place, withTerritory }: { place: Place; withTerritory: boolean }) {
@@ -881,34 +877,6 @@ function MapSection({ cityId, data, resolver }: { cityId: string; data: CityData
       )}
     </section>
   );
-}
-
-/** Plain-text version of an assignment, for Copy and Share. */
-function assignmentText(a: Assignment): string {
-  const people = a.people.deputy ? `${a.people.primary} (заменик: ${a.people.deputy})` : a.people.primary;
-  return `Територија ${a.territory.id} „${a.territory.name}“: ${people}${a.rule ? ' ' + formatRange(a.rule) : ''}`;
-}
-
-/** Plain-text version of the whole result card. */
-function resultText(result: Resolution, title: string, capitals: Place[]): string {
-  const lines = [title];
-  switch (result.kind) {
-    case 'rules':
-      lines.push(...result.assignments.map(assignmentText));
-      if (result.border) lines.push(`⚠ Број ${formatHouseNumber(result.house)} је граничан: наведена су оба задужења.`);
-      break;
-    case 'linear':
-      lines.push('Улица је подељена по бројевима:', ...result.segments.map(assignmentText));
-      break;
-    case 'inherited':
-      lines.push(assignmentText(result.assignment));
-      break;
-    case 'unassigned':
-      lines.push('Улица није додељена.');
-      break;
-  }
-  lines.push(...capitals.map((p) => capitalText(p, capitals.length > 1)));
-  return lines.join('\n');
 }
 
 async function copyText(text: string): Promise<boolean> {
