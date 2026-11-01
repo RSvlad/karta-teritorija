@@ -14,6 +14,12 @@ maplibregl.setWorkerUrl(workerUrl);
 /** What the user picked on the map; the card for it is drawn by the caller. */
 export type MapSelection = { kind: 'territory'; id: string } | { kind: 'place'; id: string };
 
+/** "Show on map" from a result card: the points to frame. A new `seq` re-frames even for the same points. */
+export interface MapFocus {
+  placeIds: readonly string[];
+  seq: number;
+}
+
 // Quiet light basemap. OpenFreeMap is a free public service without an availability guarantee
 // (see its terms); VITE_MAP_STYLE swaps it for a self-hosted style/PMTiles without code changes.
 // tile.openstreetmap.org must not be used here.
@@ -94,6 +100,8 @@ interface Props {
   data: CityData;
   resolver: Resolver;
   selected: MapSelection | null;
+  /** Points to frame after "Прикажи на мапи" on a result card (applied once the map is ready, per `seq`). */
+  focus: MapFocus | null;
   /** Show the smaller markers (collection points, other); capitals are always shown. */
   showPoints: boolean;
   /** Territories to show (filters); null = all. Layers, labels and markers of the others are hidden. */
@@ -107,7 +115,7 @@ interface Props {
 
 type Status = { kind: 'loading' } | { kind: 'ready' } | { kind: 'error'; message: string };
 
-export default function MapView({ cityId, data, resolver, selected, showPoints, visible, userPoint, onLocated, onSelect }: Props) {
+export default function MapView({ cityId, data, resolver, selected, focus, showPoints, visible, userPoint, onLocated, onSelect }: Props) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<PlaceMarker[]>([]);
@@ -285,7 +293,10 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
   useEffect(() => {
     const map = mapRef.current;
     if (!map || status.kind !== 'ready') return;
-    map.setFilter('territories-selected', ['==', ['get', 'id'], selected?.kind === 'territory' ? selected.id : '\u0000']);
+    const selectedPlace = selected?.kind === 'place' ? resolver.places.find((x) => x.id === selected.id) : undefined;
+    // A selected point highlights its territory too, so "Прикажи на мапи" shows where the street's territory is.
+    const highlighted = selected?.kind === 'territory' ? selected.id : selectedPlace?.territoryId;
+    map.setFilter('territories-selected', ['==', ['get', 'id'], highlighted ?? '\u0000']);
     for (const { place, el } of markersRef.current) {
       el.setAttribute('aria-pressed', String(selected?.kind === 'place' && selected.id === place.id));
     }
@@ -293,11 +304,22 @@ export default function MapView({ cityId, data, resolver, selected, showPoints, 
     if (selected?.kind === 'territory') {
       const b = boundsRef.current.get(selected.id);
       if (b) map.fitBounds(b, { padding: 60, animate, maxZoom: 16 });
-    } else if (selected?.kind === 'place') {
-      const p = resolver.places.find((x) => x.id === selected.id);
-      if (p && p.lat !== undefined && p.lng !== undefined) map.easeTo({ center: [p.lng, p.lat], duration: animate ? 400 : 0 });
+    } else if (selectedPlace && selectedPlace.lat !== undefined && selectedPlace.lng !== undefined) {
+      map.easeTo({ center: [selectedPlace.lng, selectedPlace.lat], duration: animate ? 400 : 0 });
     }
   }, [selected?.kind, selected?.id, status.kind]);
+
+  // "Прикажи на мапи": frame the capitals of the result (declared after the selection effect, so it wins the camera).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!focus || !map || status.kind !== 'ready') return;
+    const points = resolver.places.filter((p) => focus.placeIds.includes(p.id));
+    const b = boundsOfPlaces(points);
+    if (!b) return;
+    const animate = !reducedMotion();
+    if (b[0] === b[2] && b[1] === b[3]) map.easeTo({ center: [b[0], b[1]], zoom: Math.max(map.getZoom(), 15), duration: animate ? 400 : 0 });
+    else map.fitBounds(b, { padding: 70, animate, maxZoom: 16 });
+  }, [focus?.seq, status.kind]);
 
   return (
     <div class="map-canvas-wrap">
