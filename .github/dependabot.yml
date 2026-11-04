@@ -1,0 +1,56 @@
+version: 2
+
+# Weekly update PRs. They run the normal CI (typecheck, unit tests, build with the demo seed, e2e, Lighthouse)
+# without secrets, so a green PR is safe to merge. Minor and patch bumps arrive as one grouped PR per ecosystem;
+# majors come separately. `cooldown` waits a week after a release before proposing it (security fixes skip it).
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '07:00'
+      timezone: Europe/Belgrade
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: 'deps'
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /data-pipeline
+    schedule:
+      interval: weekly
+      day: monday
+      time: '07:00'
+      timezone: Europe/Belgrade
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: 'deps'
+    groups:
+      pip-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '07:00'
+      timezone: Europe/Belgrade
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 7
+    labels: [dependencies]
+    commit-message:
+      prefix: 'deps'
+    groups:
+      actions:
+        patterns: ['*']
