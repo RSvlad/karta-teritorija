@@ -307,6 +307,8 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
         id="street"
         type="search"
         role="combobox"
+        // Preact 11 types require `list` with role="combobox"; the list is a custom listbox, not a <datalist>.
+        list={undefined}
         autocomplete="off"
         value={query}
         onInput={(e) => { setQuery(e.currentTarget.value); setChosen(null); setOpen(true); setActive(-1); }}
