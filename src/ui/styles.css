@@ -1,6 +1,12 @@
+/* Visual identity: survey-sheet paper (a faint graticule), ink-navy chrome, and the territory colours as the only loud thing.
+   Chrome stays neutral on purpose: the colours come from the data, so they must be the ones that stand out. */
 :root {
-  --bg: #fafafa; --fg: #1b1b1b; --muted: #5c5c5c; --card: #fff; --line: #d6d6d6;
-  --accent: #1f5fbf; --warn-bg: #fff4d6; --warn-fg: #6b4a00; --err: #b3261e;
+  --bg: #e9eef4; --fg: #0e1b2e; --muted: #475a73; --card: #fff; --line: #cdd6e2; --field: #66788f;
+  --accent: #1d63d6; --primary: #0f2f5c; --on-primary: #fff; --gold: #a85f00;
+  --warn-bg: #fff3cd; --warn-fg: #5c4100; --err: #b3261e; --grid: rgba(14, 27, 46, .06);
+  --shadow: 0 1px 2px rgba(14, 27, 46, .08), 0 10px 28px -12px rgba(14, 27, 46, .28);
+  --font-ui: 'Source Sans 3 Variable', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: 'Literata Variable', Georgia, 'Times New Roman', serif;
   color-scheme: light dark;
 }
 /* Theme: follows the system unless the user chose one (data-theme on <html>, set by src/ui/prefs.ts).
@@ -8,65 +14,191 @@
 :root[data-theme="light"] { color-scheme: light; }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #121212; --fg: #ececec; --muted: #a8a8a8; --card: #1c1c1c; --line: #3a3a3a;
-    --accent: #7fb0ff; --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff8a80;
+    --bg: #0a111e; --fg: #e8eef7; --muted: #a1b3cb; --card: #131d30; --line: #27364e; --field: #7388a6;
+    --accent: #8ab8ff; --primary: #a9c8ff; --on-primary: #0a1424; --gold: #ffb54d;
+    --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff9a90; --grid: rgba(255, 255, 255, .04);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px -12px rgba(0, 0, 0, .7);
   }
 }
 :root[data-theme="dark"] {
-  --bg: #121212; --fg: #ececec; --muted: #a8a8a8; --card: #1c1c1c; --line: #3a3a3a;
-  --accent: #7fb0ff; --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff8a80;
+  --bg: #0a111e; --fg: #e8eef7; --muted: #a1b3cb; --card: #131d30; --line: #27364e; --field: #7388a6;
+  --accent: #8ab8ff; --primary: #a9c8ff; --on-primary: #0a1424; --gold: #ffb54d;
+  --warn-bg: #3a2f10; --warn-fg: #ffd98a; --err: #ff9a90; --grid: rgba(255, 255, 255, .04);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 12px 30px -12px rgba(0, 0, 0, .7);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
-main { max-width: 36rem; margin: 0 auto; padding: 1rem; }
-h1 { font-size: 1.25rem; margin: 0 0 1rem; }
-.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: 1rem; }
-.top h1 { margin: 0; }
-.prefs { display: flex; flex-wrap: wrap; gap: .5rem; }
-label { display: block; margin: 1rem 0 .25rem; font-weight: 600; }
-input, select { width: 100%; min-height: 44px; padding: .5rem .75rem; font: inherit; color: inherit;
-  background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
-#street { min-height: 56px; font-size: 1.25rem; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 1.0625rem/1.55 var(--font-ui); }
+/* The graticule sits on a pseudo-element, not on the body background, so text contrast is still measured against a flat colour. */
+body::before { content: ''; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  background-image: linear-gradient(var(--grid) 1px, transparent 1px), linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 36px 36px; background-position: -1px -1px; }
+main { max-width: 40rem; margin: 0 auto; padding: 1.25rem 1.1rem 3rem; }
+h1 { margin: 0; font: 600 1.375rem/1.2 var(--font-display); letter-spacing: -.01em; }
+.top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1rem; margin-bottom: 1.5rem; }
+/* The mark is a map cut into territories: hard-edged wedges, no blending. */
+.brand { display: inline-flex; align-items: center; gap: .6rem; }
+.brand::before { content: ''; flex: none; width: 1.75rem; height: 1.75rem; border-radius: 50%;
+  background: conic-gradient(#d9622b 0 17%, #2a7de1 0 34%, #2fa46a 0 51%, #8e44d0 0 68%, #e0b92a 0 85%, #d63b5a 0);
+  box-shadow: inset 0 0 0 .4rem var(--card), 0 0 0 1.5px var(--fg); }
+.city { margin-left: .6rem; padding-left: .8rem; border-left: 2px solid var(--line); color: var(--muted); font-weight: 400; }
+.prefs { display: flex; flex-wrap: wrap; gap: .4rem; }
+.prefs .button { min-height: 44px; padding: .35rem .8rem; font-size: .9375rem; }
+label { display: block; margin: 1.35rem 0 .4rem; font-size: .875rem; font-weight: 600; color: var(--muted); }
+input, select { width: 100%; min-height: 48px; padding: .55rem .85rem; font: inherit; color: inherit;
+  background: var(--card); border: 1.5px solid var(--field); border-radius: 12px; }
+select { appearance: none; padding-right: 2.6rem; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2366788f' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right .8rem center; background-size: 1.1rem; }
+/* The search field is the front door of the whole app: large, with the street name set like a gazetteer entry. */
+#street { min-height: 68px; padding-left: 3.4rem; font: 500 1.5rem/1.2 var(--font-display); border-radius: 18px; box-shadow: var(--shadow);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2366788f' stroke-width='2.2' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='m16.5 16.5 4 4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: 1.05rem center; background-size: 1.5rem; }
+#street::placeholder { color: var(--muted); }
 input:focus-visible, select:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.suggestions { list-style: none; margin: .25rem 0 0; padding: 0; background: var(--card);
-  border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.suggestions li { display: flex; align-items: center; min-height: 44px; padding: .5rem .75rem; cursor: pointer; }
+#street:focus-visible { border-color: var(--accent); }
+.suggestions { list-style: none; margin: .5rem 0 0; padding: .3rem; background: var(--card); box-shadow: var(--shadow);
+  border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.suggestions li { display: flex; align-items: center; min-height: 48px; padding: .5rem .75rem; border-radius: 10px; cursor: pointer; }
 .suggestions li:hover { background: var(--bg); }
-/* Active option is marked by an outline and bold text, not by colour alone. */
+/* Active option is marked by an outline and a tint, not by colour alone. */
 .suggestions li[aria-selected="true"] { background: var(--bg); outline: 3px solid var(--accent); outline-offset: -3px; }
-mark { background: none; color: inherit; font-weight: 700; text-decoration: underline; }
+mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; font-weight: 700; border-radius: 3px; }
 .muted { color: var(--muted); }
 .error { color: var(--err); }
-.card { margin-top: 1.5rem; padding: 1rem; background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
-.card-title { font-size: 1.125rem; margin: 0 0 .5rem; }
-.card h2 { font-size: 1rem; margin: .75rem 0 .25rem; }
+
+/* Small drawn icons (instead of emoji, which look different on every device). The words next to them carry the meaning. */
+.kind { display: inline-block; width: 1.15em; height: 1.15em; margin-right: .55rem; vertical-align: -.2em; background: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat; mask: var(--icon) center / contain no-repeat; }
+.kind.k-street { color: var(--muted); --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M8 3 4 21M16 3l4 18M12 5v3m0 4v3m0 4v1'/%3E%3C/svg%3E"); }
+.kind.k-point { color: var(--muted); --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linejoin='round'%3E%3Cpath d='M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z'/%3E%3Ccircle cx='12' cy='10' r='2.2'/%3E%3C/svg%3E"); }
+.kind.k-capital { color: var(--gold); --icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='m12 2.5 2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.1-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z'/%3E%3C/svg%3E"); }
+
+/* Result card: the territory colour is a tab on its heading, the rest is quiet. */
+.result .card { animation: rise .3s ease-out; }
+@keyframes rise { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .result .card { animation: none; } }
+.card { margin-top: 1.5rem; padding: 1.35rem 1.35rem 1.15rem; background: var(--card); border: 1px solid var(--line); border-radius: 22px; box-shadow: var(--shadow); }
+.card-title { margin: 0 0 .5rem; font: 600 1.625rem/1.2 var(--font-display); letter-spacing: -.015em; }
+.card h2 { display: flex; align-items: center; gap: .65rem; margin: 1rem 0 .3rem; font-size: 1.0625rem; line-height: 1.3; }
+.card .card-title { margin: 0 0 .5rem; font-size: 1.625rem; }
 .card p { margin: .25rem 0; }
-.swatch { display: inline-block; width: .9rem; height: .9rem; margin-right: .5rem; border-radius: 3px; vertical-align: -1px; }
-.warn { padding: .5rem .75rem; background: var(--warn-bg); color: var(--warn-fg); border-radius: 8px; }
-/* Capital (meeting place) row of the result card; the star is decoration, the word "Престоница" carries the meaning. */
-.capital { margin-top: 1rem; padding-top: .75rem; border-top: 1px solid var(--line); }
-.capital .actions { margin-top: .5rem; }
-.kind { display: inline-block; min-width: 1.5rem; }
+.card h2 + p strong { font-size: 1.1875rem; }
+.swatch { display: inline-block; flex: none; width: .95rem; height: .95rem; margin-right: .55rem; border-radius: 50%; vertical-align: -1px; }
+.card h2 .swatch { width: .4rem; height: auto; align-self: stretch; margin: 0; border-radius: 4px; }
+.warn { padding: .6rem .85rem; background: var(--warn-bg); color: var(--warn-fg); border-radius: 12px; }
+/* Capital (meeting place) of the result card; the star is decoration, the word "Престоница" carries the meaning. */
+.capital { margin-top: 1.1rem; padding: .85rem 1rem 1rem; background: color-mix(in srgb, var(--accent) 7%, var(--card)); border-radius: 16px; }
+.capital .actions { margin-top: .7rem; }
+.capital p { margin: .15rem 0; }
+.card > .actions { margin-top: 1.1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+/* Share / copy / print are the quiet row; the strong buttons belong to the meeting place above. */
+.card > .actions .button:not(.secondary) { color: var(--fg); background: var(--card); border: 1.5px solid var(--field); }
+.card > .actions .button:not(.secondary):hover { filter: none; background: var(--bg); }
 /* Visible to screen readers only (the suggestion's kind is also spoken, not just shown as an icon). */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-.button { display: inline-block; min-height: 44px; padding: .6rem 1rem; color: var(--bg); background: var(--accent);
-  border-radius: 8px; text-decoration: none; }
-button.button { border: 1px solid var(--accent); font: inherit; cursor: pointer; }
-.button.secondary { color: var(--accent); background: transparent; }
+.button { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: .55rem 1.1rem; color: var(--on-primary);
+  background: var(--primary); border-radius: 12px; font-weight: 600; text-decoration: none; transition: filter .15s, background-color .15s; }
+button.button { border: 1.5px solid var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
+.button:hover { filter: brightness(1.15); }
+.button.secondary { color: var(--fg); background: var(--card); border: 1.5px solid var(--field); }
+.button.secondary:hover { filter: none; background: var(--bg); }
+.button:disabled { opacity: .6; cursor: progress; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: 1rem; }
-footer { margin-top: 2rem; font-size: .875rem; }
+footer { margin-top: 2.5rem; padding-top: 1rem; border-top: 1px solid var(--line); font-size: .875rem; }
 .print-only { display: none; }
 .print-maps { display: none; }
+
+/* Map. The basemap is a fixed light style, so overlays on it use fixed colours in both themes. */
+.map-section { margin-top: 1.75rem; }
+.map-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.map-actions .button { flex: 1 1 11rem; }
+.map-panel { margin-top: 1rem; }
+.map-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .75rem 1rem; margin-bottom: .75rem; padding: .85rem 1rem;
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; }
+.map-filters label:not(.inline) { display: flex; flex-direction: column; gap: .3rem; margin: 0; font-size: .8125rem; font-weight: 600; color: var(--muted); }
+.map-filters select { width: auto; min-width: 11rem; max-width: 100%; color: var(--fg); }
+.map-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: .85rem; }
+label.inline { display: flex; align-items: center; gap: .6rem; margin: 0; font-size: 1rem; font-weight: 500; color: var(--fg); min-height: 44px; }
+label.inline input { width: 1.25rem; height: 1.25rem; min-height: 0; accent-color: var(--primary); }
+ul.plain { list-style: none; margin: 0; padding: 0; }
+.card ul.plain li { margin: .35rem 0; }
+.territory-list { display: flex; flex-wrap: wrap; gap: .45rem; }
+.chip { display: inline-flex; align-items: center; min-height: 44px; padding: .35rem .95rem .35rem .75rem; font: 600 .9375rem/1.2 var(--font-ui); color: var(--fg);
+  background: var(--card); border: 1.5px solid var(--line); border-radius: 999px; cursor: pointer; transition: border-color .15s, background-color .15s; }
+.chip:hover { border-color: var(--field); }
+.chip .swatch { box-shadow: 0 0 0 2px var(--card); }
+/* Selected is shown by an inverted fill and a heavier weight, not by colour alone. */
+.chip[aria-pressed="true"] { color: var(--on-primary); background: var(--primary); border-color: var(--primary); font-weight: 700; }
+.chip[aria-pressed="true"] .swatch { box-shadow: 0 0 0 2px #fff; }
+.chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+.map-canvas-wrap { position: relative; min-height: 24rem; height: clamp(24rem, 68vh, 46rem);
+  border: 1px solid var(--line); border-radius: 22px; overflow: hidden; box-shadow: var(--shadow); }
+/* More specific than MapLibre's own ".maplibregl-map { position: relative }", which would collapse the canvas to zero height. */
+.map-canvas-wrap > .map-canvas { position: absolute; inset: 0; }
+.map-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 1rem; text-align: center; }
+/* Hint over the map that must not block it (e.g. borders not drawn yet). */
+.map-status.note { inset: auto 0.5rem 1.75rem; padding: 0.25rem 0.6rem; width: fit-content; max-width: calc(100% - 1rem); background: var(--card); border-radius: 8px; pointer-events: none; }
+.maplibregl-ctrl-group { border-radius: 14px !important; box-shadow: var(--shadow) !important; overflow: hidden; }
+.maplibregl-ctrl-group button { width: 40px !important; height: 40px !important; }
+/* Territory label: a white tag edged in the territory colour. It shows only the number until the map is zoomed in far
+   enough to read the name, so the centre of a dense city is not a pile of overlapping words. */
+.map-label { display: flex; align-items: center; gap: .35rem; padding: .1rem .55rem; color: #0e1b2e; background: #fff;
+  border: 2px solid var(--tc, #9e9e9e); border-radius: 999px; font: 700 12px/1.35 var(--font-ui); white-space: nowrap; pointer-events: none;
+  box-shadow: 0 1px 4px rgba(14, 27, 46, .4); }
+.map-label .name { display: none; font-weight: 600; }
+.map-canvas.zoomed .map-label .name { display: inline; }
+.map-marker { display: grid; place-items: center; padding: 0; color: #0e1b2e; background: #fff;
+  border: 3px solid var(--tc, #9e9e9e); border-radius: 50%; cursor: pointer; font: 700 17px/1 var(--font-ui);
+  box-shadow: 0 0 0 2px #fff, 0 2px 8px rgba(14, 27, 46, .5); }
+.map-marker.capital { width: 34px; height: 34px; }
+.map-marker.point { width: 16px; height: 16px; border-width: 4px; }
+/* Keeps a 44px touch target around the small dots. */
+.map-marker::after { content: ''; position: absolute; inset: -14px; }
+.map-marker.capital::after { inset: -6px; }
+.map-marker[hidden] { display: none; }
+.map-marker[aria-pressed="true"] { outline: 3px solid #0e1b2e; outline-offset: 3px; }
+.map-marker:focus-visible { outline: 3px solid #0e1b2e; outline-offset: 3px; }
+.map-sheet .card { margin-top: .5rem; }
+.map-sheet .close { display: flex; float: none; margin: 0 0 .5rem auto; min-height: 44px; padding: .3rem .8rem; }
+
+/* Phone: the card is a bottom sheet over the map. */
+@media (max-width: 47.99rem) {
+  .map-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 58vh; overflow-y: auto;
+    padding: .75rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px)); background: var(--bg);
+    border-top: 1px solid var(--line); border-radius: 24px 24px 0 0; box-shadow: 0 -8px 32px rgba(0, 0, 0, .28); }
+  .map-sheet::before { content: ''; display: block; width: 2.5rem; height: .3rem; margin: 0 auto .35rem; background: var(--field); border-radius: 99px; }
+  .card-title, .card .card-title { font-size: 1.5rem; }
+  /* In the sheet the card is not a second box: the sheet is the box. The close button sits in its top corner. */
+  .map-sheet .card { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+  .map-sheet .card .card-title { padding-right: 5.5rem; font-size: 1.3125rem; }
+  .map-sheet .close { position: absolute; top: .9rem; right: 1rem; margin: 0; }
+}
+/* Desktop: map and a side panel, wider than the search column. */
+@media (min-width: 48rem) {
+  .map-panel { position: relative; left: 50%; width: min(70rem, calc(100vw - 2rem)); transform: translateX(-50%); }
+  .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: 1.1rem; align-items: start; }
+  .map-layout:not(:has(.map-sheet)) { grid-template-columns: minmax(0, 1fr); }
+  .map-sheet { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow-y: auto; }
+  .map-sheet .card { margin-top: 0; }
+}
+
+/* "Where am I?" */
+.locate { margin-top: 1.25rem; }
+.locate .card { margin-top: .75rem; }
+.map-label[hidden] { display: none; }
+.map-me { width: 20px; height: 20px; background: #1a73e8; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 6px rgba(26, 115, 232, .25), 0 1px 4px rgba(0, 0, 0, .5); }
 
 /* Print: only one card on one A4 page, black on white, no controls.
    Colour is always paired with the territory name, so the page reads in black and white.
    With the "Штампај" button the card is marked .print-target (body.printing) and everything else is hidden;
-   with plain Ctrl+P only the search result is printed. */
+   with plain Ctrl+P only the search result is printed. This block is last so it wins over the screen look above. */
 @page { size: A4; margin: 15mm; }
 @media print {
   html, body { background: #fff; color: #000; font-size: 12pt; }
+  body::before { display: none; }
   main { max-width: none; padding: 0; }
   body:not(.printing) main > :not(.result) { display: none; }
   /* Hides all but the card, the elements that contain it and its own content. */
@@ -75,11 +207,16 @@ footer { margin-top: 2rem; font-size: .875rem; }
   body.printing :has(.print-target) { position: static; display: block; width: auto; max-width: none; height: auto; max-height: none;
     margin: 0; padding: 0; transform: none; overflow: visible; background: none; border: 0; box-shadow: none; }
   .result { margin: 0; }
-  .card { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; color: #000; break-inside: avoid; }
-  .card-title { font-size: 18pt; }
-  .card h2 { font-size: 14pt; }
+  .result .card { animation: none; }
+  .card { margin: 0; padding: 0; background: none; border: 0; border-radius: 0; box-shadow: none; color: #000; break-inside: avoid; }
+  .card-title, .card .card-title { font: 700 18pt/1.2 var(--font-ui); letter-spacing: 0; }
+  .card h2 { display: block; font-size: 14pt; }
+  .card h2 + p strong { font-size: inherit; }
   .muted { color: #000; }
-  .swatch { width: 1rem; height: 1rem; border: 1px solid #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .swatch, .card h2 .swatch { display: inline-block; width: 1rem; height: 1rem; margin-right: .5rem; border: 1px solid #000; border-radius: 3px;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .capital { padding: 0; background: none; border-radius: 0; }
+  .kind { display: none; }
   .warn { background: none; color: #000; border: 1px solid #000; }
   .actions, .button { display: none; }
   .print-only { display: block; margin-top: 1rem; font-size: 10pt; }
@@ -98,62 +235,3 @@ footer { margin-top: 2rem; font-size: .875rem; }
   .street-list.dense { column-count: 3; column-gap: 1rem; font-size: 9pt; }
   .street-list li { break-inside: avoid; margin: .15rem 0; }
 }
-
-/* Map. The basemap is a fixed light style, so overlays on it use fixed colours in both themes. */
-.map-section { margin-top: 1.5rem; }
-.map-panel { margin-top: 1rem; }
-.map-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: .75rem; }
-label.inline { display: flex; align-items: center; gap: .5rem; margin: 0; font-weight: 400; min-height: 44px; }
-label.inline input { width: auto; min-height: 0; }
-ul.plain { list-style: none; margin: 0; padding: 0; }
-.card ul.plain li { margin: .25rem 0; }
-.territory-list { display: flex; flex-wrap: wrap; gap: .5rem; }
-.chip { min-height: 44px; padding: .4rem .75rem; font: inherit; color: inherit; background: var(--card);
-  border: 1px solid var(--line); border-radius: 999px; cursor: pointer; }
-/* Selected is shown by a thick outline, not by colour alone. */
-.chip[aria-pressed="true"] { border-color: var(--fg); outline: 2px solid var(--fg); outline-offset: -3px; font-weight: 700; }
-.chip:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
-.map-canvas-wrap { position: relative; min-height: 22rem; height: 60vh; max-height: 40rem;
-  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
-/* More specific than MapLibre's own ".maplibregl-map { position: relative }", which would collapse the canvas to zero height. */
-.map-canvas-wrap > .map-canvas { position: absolute; inset: 0; }
-.map-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 1rem; text-align: center; }
-/* Hint over the map that must not block it (e.g. borders not drawn yet). */
-.map-status.note { inset: auto 0.5rem 1.75rem; padding: 0.25rem 0.6rem; width: fit-content; max-width: calc(100% - 1rem); background: var(--card); border-radius: 4px; pointer-events: none; }
-.map-label { padding: 0 .25rem; color: #1b1b1b; font: 600 12px/1.2 system-ui, sans-serif; white-space: nowrap; pointer-events: none;
-  text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 3px #fff; }
-.map-marker { display: grid; place-items: center; padding: 0; color: #1b1b1b; background: #fff;
-  border: 3px solid var(--tc, #9e9e9e); border-radius: 50%; cursor: pointer; font: 700 16px/1 system-ui, sans-serif; }
-.map-marker.capital { width: 32px; height: 32px; }
-.map-marker.point { width: 16px; height: 16px; border-width: 4px; }
-/* Keeps a 44px touch target around the small dots. */
-.map-marker::after { content: ''; position: absolute; inset: -14px; }
-.map-marker.capital::after { inset: -6px; }
-.map-marker[hidden] { display: none; }
-.map-marker[aria-pressed="true"] { outline: 3px solid #1b1b1b; outline-offset: 2px; }
-.map-marker:focus-visible { outline: 3px solid #1b1b1b; outline-offset: 2px; }
-.map-sheet .card { margin-top: .5rem; }
-.map-sheet .close { float: right; margin-top: 0; }
-
-/* Phone: the card is a bottom sheet over the map. */
-@media (max-width: 47.99rem) {
-  .map-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; max-height: 55vh; overflow-y: auto;
-    padding: .5rem 1rem calc(1rem + env(safe-area-inset-bottom, 0px)); background: var(--bg);
-    border-top: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -4px 16px rgba(0, 0, 0, .2); }
-}
-/* Desktop: map and a side panel, wider than the search column. */
-@media (min-width: 48rem) {
-  .map-panel { position: relative; left: 50%; width: min(64rem, calc(100vw - 2rem)); transform: translateX(-50%); }
-  .map-layout { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; gap: 1rem; align-items: start; }
-  .map-layout:not(:has(.map-sheet)) { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* Map filters and "Where am I?" */
-.map-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
-.map-filters { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem 1rem; margin-bottom: .75rem; }
-.map-filters label:not(.inline) { margin: 0; }
-.map-filters select { width: auto; min-width: 10rem; max-width: 100%; }
-.locate { margin-top: 1rem; }
-.locate .card { margin-top: 0; }
-.map-label[hidden] { display: none; }
-.map-me { width: 18px; height: 18px; background: #1a73e8; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 2px #1a73e8, 0 1px 4px rgba(0,0,0,.4); }

@@ -132,7 +132,7 @@ function Cities({ cities }: { cities: CityRef[] }) {
   return (
     <main>
       <header class="top">
-        <h1>{profile.app.title} · {current.name}</h1>
+        <h1><span class="brand">{profile.app.title}</span>{' '}<span class="city">{current.name}</span></h1>
         <Prefs />
       </header>
       {!online && <p class="warn" role="status">Нисте на мрежи. Приказују се подаци сачувани на уређају.</p>}
@@ -333,7 +333,7 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
             >
               <span>
                 {/* The icon is decoration; the kind is also spoken and, for places, the address is shown. */}
-                <span class="kind" aria-hidden="true">{h.kind === 'street' ? '🛣️' : h.place.kind === 'capital' ? '★' : '📍'}</span>
+                <span class={`kind ${h.kind === 'street' ? 'k-street' : h.place.kind === 'capital' ? 'k-capital' : 'k-point'}`} aria-hidden="true" />
                 <span class="sr-only">{h.kind === 'street' ? 'Улица: ' : h.place.kind === 'capital' ? `${tr('capital.label')}: ` : 'Тачка: '}</span>
                 <Highlight text={hitName(h)} query={query} />
                 {h.kind === 'street' && h.street.settlement && <span class="muted"> · {h.street.settlement}</span>}
@@ -481,7 +481,7 @@ function CapitalLine({ place, withTerritory, onShowOnMap }: { place: Place; with
   return (
     <div class="capital">
       <p>
-        <span aria-hidden="true">★ </span>
+        <span class="kind k-capital" aria-hidden="true" />
         {withTerritory ? tr('capital.labelFor', { id: place.territoryId }) : tr('capital.label')}: <strong>{place.name}</strong>, {place.address}
       </p>
       {place.note && <p class="muted">{place.note}</p>}
@@ -516,7 +516,7 @@ function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; r
       <h2 class="card-title">{title}</h2>
       <StaleWarning updated={updated} />
       <p>
-        <span aria-hidden="true">{place.kind === 'capital' ? '★ ' : '📍 '}</span>
+        <span class={`kind ${place.kind === 'capital' ? 'k-capital' : 'k-point'}`} aria-hidden="true" />
         {kind}: {place.address}
       </p>
       {place.note && <p class="muted">{place.note}</p>}
@@ -563,7 +563,7 @@ function TerritoryCard({ territoryId, resolver, city, cityId, updated }: { terri
         <>
           <h2>Тачке</h2>
           <ul class="plain">
-            {points.map((p) => <li key={p.id}><span aria-hidden="true">📍 </span>{p.name} <span class="muted">· {p.address}</span></li>)}
+            {points.map((p) => <li key={p.id}><span class="kind k-point" aria-hidden="true" />{p.name} <span class="muted">· {p.address}</span></li>)}
           </ul>
         </>
       )}
@@ -640,7 +640,7 @@ function NearestCapital({ place, meters, resolver }: { place: Place; meters: num
     <article class="card">
       <h2 class="card-title">{tr('capital.nearest')}</h2>
       <p>
-        <span aria-hidden="true">★ </span>
+        <span class="kind k-capital" aria-hidden="true" />
         <strong>{place.name}</strong>, {place.address}
       </p>
       <p class="muted">

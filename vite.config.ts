@@ -51,6 +51,12 @@ export default defineConfig({
             },
           },
           {
+            // Fonts are not in the app shell (only the subsets a person's script needs are ever fetched): keep what was used.
+            urlPattern: ({ url, sameOrigin }) => sameOrigin && url.pathname.endsWith('.woff2'),
+            handler: 'CacheFirst',
+            options: { cacheName: `${profile.app.cachePrefix}-fonts`, expiration: { maxEntries: 20 } },
+          },
+          {
             // Map style and tiles already viewed stay available offline.
             urlPattern: ({ url }) => url.origin === 'https://tiles.openfreemap.org',
             handler: 'CacheFirst',
