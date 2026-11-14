@@ -126,7 +126,7 @@ export function createResolver(data: CityData) {
         if (matches.length) {
           const assignments = matches.map(fromRule);
           const distinct = new Set(
-            assignments.map((a) => `${a.territory.id}|${a.people.primary}|${a.people.deputy ?? ''}`),
+            assignments.map((a) => `${a.territory.id}|${a.people.primary ?? ''}|${a.people.deputy ?? ''}`),
           );
           return { kind: 'rules', street, house, assignments, border: distinct.size > 1 };
         }

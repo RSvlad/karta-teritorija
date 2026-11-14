@@ -1,5 +1,5 @@
 import { coversAllNumbers, formatHouseNumber, formatRange } from '../resolver';
-import type { Assignment, Place, Resolution } from '../resolver';
+import type { Assignment, People, Place, Resolution } from '../resolver';
 import { tr } from '../profile';
 
 /** "★ Престоница: назив, адреса"; the territory is named only when the card spans several. */
@@ -7,13 +7,17 @@ export function capitalText(p: Place, withTerritory: boolean): string {
   return `★ ${withTerritory ? tr('capital.labelFor', { id: p.territoryId }) : tr('capital.label')}: ${p.name}, ${p.address}`;
 }
 
-function peopleText(a: Assignment): string {
-  return a.people.deputy ? `${a.people.primary} (заменик: ${a.people.deputy})` : a.people.primary;
+/** "Задужен (заменик: Заменик)"; empty when nobody is assigned. */
+export function peopleText(people: People): string {
+  const { primary, deputy } = people;
+  if (primary && deputy) return `${primary} (заменик: ${deputy})`;
+  if (deputy) return `заменик: ${deputy}`;
+  return primary ?? '';
 }
 
 /** Person(s) and, when `withRange`, the number range the assignment covers. */
 function assigneeText(a: Assignment, withRange: boolean): string {
-  return `${peopleText(a)}${withRange && a.rule && !coversAllNumbers(a.rule) ? ' ' + formatRange(a.rule) : ''}`;
+  return `${peopleText(a.people)}${withRange && a.rule && !coversAllNumbers(a.rule) ? ' ' + formatRange(a.rule) : ''}`;
 }
 
 /**
@@ -27,9 +31,13 @@ function assignmentLines(assignments: Assignment[], withRange: boolean): string[
     let end = i + 1;
     while (end < assignments.length && assignments[end]!.territory.id === territory.id) end++;
     const group = assignments.slice(i, end);
-    const heading = `${tr('territory.heading', { id: territory.id, name: territory.name })}:`;
-    if (group.length === 1) lines.push(`${heading} ${assigneeText(group[0]!, withRange)}`);
-    else lines.push(heading, ...group.map((a) => `  ${assigneeText(a, withRange)}`));
+    const name = tr('territory.heading', { id: territory.id, name: territory.name });
+    const heading = `${name}:`;
+    if (group.length === 1) lines.push(`${heading} ${assigneeText(group[0]!, withRange)}`.trimEnd().replace(/:$/, ''));
+    else {
+      const rows = group.map((a) => `  ${assigneeText(a, withRange)}`.trimEnd()).filter((l) => l.trim() !== '');
+      lines.push(rows.length ? heading : name, ...rows);
+    }
     i = end;
   }
   return lines;

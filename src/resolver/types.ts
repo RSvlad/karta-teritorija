@@ -1,7 +1,8 @@
 export type Parity = 'all' | 'odd' | 'even';
 
 export interface People {
-  primary: string;
+  /** Optional: a territory (or rule) may have nobody assigned yet. */
+  primary?: string;
   deputy?: string;
 }
 

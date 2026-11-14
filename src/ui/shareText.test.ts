@@ -6,7 +6,7 @@ import { resultText } from './shareText';
 const street = { id: 's1', name: 'Футошка' } as Street;
 const house = parseHouseNumber('12')!;
 const rule = (from: number | null, to: number | null, parity: Rule['parity'] = 'all') => ({ from, to, parity }) as Rule;
-const assignment = (id: string, name: string, primary: string, r?: Rule, deputy?: string): Assignment => ({
+const assignment = (id: string, name: string, primary: string | undefined, r?: Rule, deputy?: string): Assignment => ({
   territory: { id, name } as Assignment['territory'],
   people: { primary, deputy },
   rule: r,
@@ -15,6 +15,14 @@ const capital: Place = { id: 'p1', name: 'Сала Либерти', kind: 'capit
 const title = 'Футошка 12 · Нови Сад';
 
 describe('resultText', () => {
+  it('rules: a territory without an assignee is named with no dangling colon', () => {
+    const result: Resolution = {
+      kind: 'rules', street, house, border: false,
+      assignments: [assignment('14', 'Либерти', undefined, rule(null, null))],
+    };
+    expect(resultText(result, title, [])).toBe([title, 'Територија 14 „Либерти“'].join('\n'));
+  });
+
   it('rules: omits the range when the number is entered', () => {
     const result: Resolution = {
       kind: 'rules', street, house, border: false,

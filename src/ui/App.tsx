@@ -7,7 +7,7 @@ import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
 import { daysLabel, staleAgeDays } from './freshness';
-import { capitalText, resultText } from './shareText';
+import { capitalText, peopleText, resultText } from './shareText';
 import { formatDistance, nearest } from '../geo/geo';
 import { PrintMaps, preparePrintMaps } from './PrintMap';
 import { useRoute } from './route';
@@ -395,8 +395,8 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
 function PeopleLine({ a }: { a: Assignment }) {
   return (
     <>
-      <strong>{a.people.primary}</strong>
-      {a.people.deputy && <span class="muted"> · заменик: {a.people.deputy}</span>}
+      {a.people.primary && <strong>{a.people.primary}</strong>}
+      {a.people.deputy && <span class="muted">{a.people.primary ? ' · ' : ''}заменик: {a.people.deputy}</span>}
     </>
   );
 }
@@ -508,7 +508,7 @@ function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; r
   const text = [
     title,
     `${kind}: ${place.address}`,
-    `${tr('territory.heading', { id: territory.id, name: territory.name })}: ${territory.defaults.primary}`,
+    `${tr('territory.heading', { id: territory.id, name: territory.name })}${peopleText(territory.defaults) ? `: ${peopleText(territory.defaults)}` : ''}`,
     ...(place.note ? [place.note] : []),
   ].join('\n');
   return (
@@ -524,7 +524,7 @@ function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; r
         <span class="swatch" style={{ background: territory.color }} aria-hidden="true" />
         {tr('territory.heading', { id: territory.id, name: territory.name })}
       </h2>
-      <p><strong>{territory.defaults.primary}</strong></p>
+      {territory.defaults.primary && <p><strong>{territory.defaults.primary}</strong></p>}
       <PlaceLinks place={place} />
       <PrintMaps cityId={cityId} territoryIds={[territory.id]} resolver={resolver} />
       <p class="print-only">Ажурирано: {updated}</p>
@@ -541,12 +541,10 @@ function TerritoryCard({ territoryId, resolver, city, cityId, updated }: { terri
   const points = resolver.places.filter((p) => p.territoryId === territory.id && p.kind !== 'capital');
   const streets = resolver.streetsOf(territory.id);
   const title = `${tr('territory.heading', { id: territory.id, name: territory.name })} · ${city}`;
-  const people = territory.defaults.deputy
-    ? `${territory.defaults.primary} (заменик: ${territory.defaults.deputy})`
-    : territory.defaults.primary;
+  const people = peopleText(territory.defaults);
   const text = [
     title,
-    people,
+    ...(people ? [people] : []),
     ...(capital ? [capitalText(capital, false)] : []),
     ...points.map((p) => `📍 ${p.name}, ${p.address}`),
   ].join('\n');
@@ -557,7 +555,7 @@ function TerritoryCard({ territoryId, resolver, city, cityId, updated }: { terri
         {title}
       </h2>
       <StaleWarning updated={updated} />
-      <p><strong>{territory.defaults.primary}</strong>{territory.defaults.deputy && <span class="muted"> · заменик: {territory.defaults.deputy}</span>}</p>
+      {(territory.defaults.primary || territory.defaults.deputy) && <p><PeopleLine a={{ territory, people: territory.defaults }} /></p>}
       {capital && <CapitalLine place={capital} withTerritory={false} />}
       {points.length > 0 && (
         <>
@@ -695,7 +693,7 @@ function MapSection({ cityId, data, resolver, request }: {
   const people = useMemo(() => {
     const names = new Set<string>();
     for (const t of resolver.territories.values()) {
-      names.add(t.defaults.primary);
+      if (t.defaults.primary) names.add(t.defaults.primary);
       if (t.defaults.deputy) names.add(t.defaults.deputy);
     }
     for (const r of data.rules) if (r.assignee) names.add(r.assignee);
@@ -831,13 +829,15 @@ function MapSection({ cityId, data, resolver, request }: {
                   {territories.map((t) => <option key={t.id} value={t.id}>{t.id} {t.name}</option>)}
                 </select>
               </label>
-              <label>
-                Задужени
-                <select value={assignee} onChange={(e) => setAssignee(e.currentTarget.value)}>
-                  <option value="">Сви</option>
-                  {people.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
+              {people.length > 0 && (
+                <label>
+                  Задужени
+                  <select value={assignee} onChange={(e) => setAssignee(e.currentTarget.value)}>
+                    <option value="">Сви</option>
+                    {people.map((n) => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+              )}
               {me && (
                 <label class="inline">
                   <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.currentTarget.checked)} />

@@ -64,7 +64,7 @@ const COLUMNS = {
 };
 
 const REQUIRED = {
-  territories: ['id', 'name', 'color', 'primary'],
+  territories: ['id', 'name', 'color'],
   rules: ['street', 'territory'],
   places: ['name', 'territory', 'address'],
   scope: ['territory', 'street'],
@@ -159,13 +159,12 @@ export function buildCity({ city, name, reportEmail, updated, territoriesRaw, ru
     else if (territoryIds.has(v.id)) problems.push(`${where}: ид „${v.id}“ се понавља`);
     if (!v.name) problems.push(`${where}: нема назива`);
     if (!/^#[0-9a-fA-F]{6}$/.test(v.color)) problems.push(`${where}: боја „${v.color}“ мора бити облика #rrggbb`);
-    if (!v.primary) problems.push(`${where}: нема задуженог`);
     territoryIds.add(v.id);
     const t = {
       id: v.id,
       name: v.name,
       color: v.color.toLowerCase(),
-      defaults: { primary: v.primary, ...(v.deputy && { deputy: v.deputy }) },
+      defaults: { ...(v.primary && { primary: v.primary }), ...(v.deputy && { deputy: v.deputy }) },
       ...(v.note && { note: v.note }),
     };
     territories.push(t);
