@@ -1,19 +1,26 @@
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
 import { VitePWA } from 'vite-plugin-pwa';
+import { DEFAULT_PROFILE, loadProfile } from './profiles/load.mjs';
+
+// The words of the deployment (profiles/<name>/profile.json). Unit tests always use the default profile,
+// so their expectations are the same in every deployment; the profile test checks the others.
+const profile = loadProfile(process.env.VITEST ? DEFAULT_PROFILE : undefined);
 
 // base './' keeps asset URLs valid under a custom domain and under /<repo>/.
 export default defineConfig({
   base: './',
+  define: { __PROFILE__: JSON.stringify(profile) },
   plugins: [
     preact(),
+    { name: 'profile-html', transformIndexHtml: (html: string) => html.replaceAll('%APP_TITLE%', profile.app.title) },
     VitePWA({
       // The new service worker takes over on the next load; no update prompt is needed in the UI.
       registerType: 'autoUpdate',
       manifest: {
         id: './',
-        name: 'Територије',
-        short_name: 'Територије',
+        name: profile.app.title,
+        short_name: profile.app.title,
         lang: 'sr',
         start_url: './',
         scope: './',
@@ -38,7 +45,7 @@ export default defineConfig({
             urlPattern: ({ url, sameOrigin }) => sameOrigin && /\/data\/[^/]+\.(json|geojson)$/.test(url.pathname),
             handler: 'NetworkFirst',
             options: {
-              cacheName: 'moj-paroh-data',
+              cacheName: `${profile.app.cachePrefix}-data`,
               networkTimeoutSeconds: 4,
               expiration: { maxEntries: 40 },
             },
@@ -48,7 +55,7 @@ export default defineConfig({
             urlPattern: ({ url }) => url.origin === 'https://tiles.openfreemap.org',
             handler: 'CacheFirst',
             options: {
-              cacheName: 'moj-paroh-map',
+              cacheName: `${profile.app.cachePrefix}-map`,
               expiration: { maxEntries: 300, maxAgeSeconds: 30 * 24 * 60 * 60 },
               cacheableResponse: { statuses: [200] },
             },
@@ -57,5 +64,5 @@ export default defineConfig({
       },
     }),
   ],
-  test: { include: ['src/**/*.test.ts'] },
+  test: { include: ['src/**/*.test.ts', 'profiles/**/*.test.mjs'] },
 });

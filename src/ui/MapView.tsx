@@ -8,6 +8,7 @@ import type { CityData, Place, Resolver } from '../resolver';
 import { containsPoint, polygonsOf } from '../geo/geo';
 import type { Geometry } from '../geo/geo';
 import { tx, useScript } from './prefs';
+import { tr } from '../profile';
 import { STYLE_URL } from './mapStyle';
 
 maplibregl.setWorkerUrl(workerUrl);
@@ -89,7 +90,7 @@ interface PlaceMarker {
 
 /** Name of a marker for assistive technology, in the chosen script. */
 function markerLabel(place: Place): string {
-  return tx(`${place.kind === 'capital' ? 'Престоница' : 'Тачка'}: ${place.name}`);
+  return tx(`${place.kind === 'capital' ? tr('capital.label') : 'Тачка'}: ${place.name}`);
 }
 
 interface Props {
@@ -324,7 +325,7 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
       {status.kind === 'loading' && <p class="map-status muted" role="status">Учитавање мапе…</p>}
       {status.kind === 'error' && <p class="map-status error" role="alert">{status.message}</p>}
       {status.kind === 'ready' && noBorders && (
-        <p class="map-status muted note" role="status">Границе територија још нису нацртане.</p>
+        <p class="map-status muted note" role="status">{tr('territory.bordersMissing')}</p>
       )}
     </div>
   );

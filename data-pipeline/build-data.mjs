@@ -23,18 +23,21 @@
 // input is unchanged since the previous deploy (build-state.json) is not redrawn: territories.py is skipped.
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { buildCity } from './lib/build-city.mjs';
+import { buildCity, TERRITORIES_TAB } from './lib/build-city.mjs';
 import { fingerprint, parseCitiesTab, splitByCity } from './lib/central.mjs';
 import { loadOsmStreets, mergeOsmStreets } from './lib/osm-index.mjs';
 import { loadOsmOnlyCities } from './lib/osm-only.mjs';
 import { attachCoordinates, loadGeocodeCache, writePlacesInput } from './lib/places.mjs';
 import { fetchTabs, getAccessToken, parseCredentials } from './lib/sheets.mjs';
 import { parseBoundaries, writeBoundaries } from './lib/boundaries.mjs';
+import { activeProfile, tr } from '../profiles/load.mjs';
 import { buildRulesInput, buildTerritoriesInput, writeTerritoriesInput } from './lib/territories-input.mjs';
 
 const OUT_DIR = 'public/data';
 const PREVIOUS_DIR = process.env.PREVIOUS_DATA_DIR ?? 'data-pipeline/work/previous';
-const REQUIRED_TABS = ['Градови', 'Територије', 'Правила'];
+const REQUIRED_TABS = ['Градови', TERRITORIES_TAB, 'Правила'];
+// Older names of the territories tab that still work (with a warning), see profiles/<name>/profile.json.
+const TAB_ALIASES = activeProfile().sheet.territoriesTabAliases;
 const OPTIONAL_TABS = ['Тачке', 'Обим', 'Границе'];
 
 function fail(message) {
@@ -95,7 +98,13 @@ const token = await getAccessToken(key).catch((e) => fail(e.message));
 const buildDate = new Date().toISOString().slice(0, 10);
 
 // ── Read everything once, then group by city in memory ────────────────────────────────────────────────────
-const tabs = await fetchTabs(token, sheetsId, [...REQUIRED_TABS, ...OPTIONAL_TABS]).catch((e) => fail(e.message));
+const tabs = await fetchTabs(token, sheetsId, [...REQUIRED_TABS, ...OPTIONAL_TABS, ...TAB_ALIASES]).catch((e) => fail(e.message));
+for (const alias of TAB_ALIASES) {
+  if (tabs[TERRITORIES_TAB] === null && tabs[alias] !== null) {
+    tabs[TERRITORIES_TAB] = tabs[alias];
+    annotate(tr('build.tabRenamed', { old: alias, tab: TERRITORIES_TAB }));
+  }
+}
 const structural = []; // errors that cannot be blamed on one city: they stop the build
 for (const title of REQUIRED_TABS) {
   if (tabs[title] === null) structural.push(`нема листа „${title}“ у Sheet-у`);
@@ -147,7 +156,7 @@ for (const c of cities) {
       const table = byTab[title]?.get(c.id) ?? null;
       return optional && (!table || table.length < 2) ? null : table;
     };
-    const territoriesRaw = pick('Територије');
+    const territoriesRaw = pick(TERRITORIES_TAB);
     const rulesRaw = pick('Правила');
     const placesRaw = pick('Тачке', true);
     const scopeRaw = pick('Обим', true);
@@ -164,7 +173,7 @@ for (const c of cities) {
       city: c.id, name: c.name, reportEmail: c.reportEmail, updated, territoriesRaw, rulesRaw, placesRaw,
     });
     if (placesRaw === null) {
-      console.warn(`! ${c.id}: нема редова у листу „Тачке“; картице неће имати престоницу.`);
+      console.warn(`! ${tr('build.noPlacesTab', { city: c.id })}`);
     } else {
       const geocoded = attachCoordinates(data, loadGeocodeCache(c.id));
       data = geocoded.data;
@@ -185,10 +194,9 @@ for (const c of cities) {
     let drawing = null;
     const hasCapitals = data.places.some((p) => p.kind === 'capital' && Number.isFinite(p.lat) && Number.isFinite(p.lng));
     if (data.territories.length === 0) {
-      console.warn(`! ${c.id}: нема територија у листу „Територије“; границе се не цртају.`);
+      console.warn(`! ${tr('build.noTerritories', { city: c.id, tab: TERRITORIES_TAB })}`);
     } else if (!existsSync(`data-pipeline/cache/${c.id}/network.json`)) {
-      console.warn(`! ${c.id}: нема уличне мреже; територије се не цртају `
-        + `(покрените: python data-pipeline/territories.py --city ${c.id} --refresh и комитујте network.json).`);
+      console.warn(`! ${tr('build.noNetwork', { city: c.id })}`);
     } else if (scopeRaw !== null && hasCapitals) {
       drawing = buildTerritoriesInput(data, scopeRaw).input;
     } else {
@@ -226,7 +234,7 @@ for (const c of cities) {
         }
         if (run.status !== 0) {
           rmSync(geoOut, { force: true });
-          throw new Error(`цртање територија није успело (излаз ${run.status}), погледајте поруку изнад.`);
+          throw new Error(tr('build.drawFailed', { status: run.status }));
         }
       }
       state[c.id] = { fingerprint: print };

@@ -1,6 +1,14 @@
 // Pure transformation: rows read from the Sheet -> CityData (src/resolver/types.ts).
 // No I/O here, so it can be checked without network access.
 
+import { activeProfile, tr } from '../../profiles/load.mjs';
+
+const { sheet } = activeProfile();
+/** Names of the territory column in the Sheet (first one is the preferred, the rest are older spellings). */
+export const TERRITORY_COLUMN = sheet.territoryColumn;
+/** Name of the tab with the territories. */
+export const TERRITORIES_TAB = sheet.territoriesTab;
+
 export class PipelineError extends Error {
   constructor(problems) {
     super(`Неисправни подаци у Sheet-у:\n${problems.map((p) => `  • ${p}`).join('\n')}`);
@@ -23,13 +31,13 @@ const COLUMNS = {
     from: ['од'],
     to: ['до'],
     parity: ['паритет', 'страна'],
-    territory: ['територија'],
+    territory: TERRITORY_COLUMN,
     assignee: ['задужен', 'задужени'],
     note: ['напомена'],
   },
   places: {
     name: ['назив', 'име'],
-    territory: ['територија'],
+    territory: TERRITORY_COLUMN,
     kind: ['врста', 'тип'],
     address: ['адреса'],
     lat: ['ширина', 'lat', 'latitude'],
@@ -38,7 +46,7 @@ const COLUMNS = {
   },
   // The "Обим" tab: streets that bound a territory (barriers for territories.py), see lib/territories-input.mjs.
   scope: {
-    territory: ['територија'],
+    territory: TERRITORY_COLUMN,
     street: ['улица'],
     settlement: ['насеље', 'место'],
     from: ['од'],
@@ -64,7 +72,7 @@ const REQUIRED = {
 };
 
 const KIND = new Map([
-  ['престоница', 'capital'], ['prestonica', 'capital'], ['capital', 'capital'],
+  ...sheet.capitalKind.map((spelling) => [spelling, 'capital']),
   ['сабирна', 'collector'], ['sabirna', 'collector'], ['collector', 'collector'],
   ['', 'other'], ['остало', 'other'], ['ostalo', 'other'], ['other', 'other'],
 ]);
@@ -137,7 +145,7 @@ function parseBound(text, where, problems) {
 
 export function buildCity({ city, name, reportEmail, updated, territoriesRaw, rulesRaw, placesRaw = null }) {
   const problems = [];
-  const territoryRows = readTable('territories', 'Територије', territoriesRaw, problems);
+  const territoryRows = readTable('territories', TERRITORIES_TAB, territoriesRaw, problems);
   const ruleRows = readTable('rules', 'Правила', rulesRaw, problems);
   // The "Тачке" tab is optional. Without it the city simply has no places; once it exists,
   // every territory must have exactly one capital.
@@ -146,7 +154,7 @@ export function buildCity({ city, name, reportEmail, updated, territoriesRaw, ru
   const territories = [];
   const territoryIds = new Set();
   for (const { row, values: v } of territoryRows) {
-    const where = `Територије, ред ${row}`;
+    const where = `${TERRITORIES_TAB}, ред ${row}`;
     if (!v.id) problems.push(`${where}: нема ид`);
     else if (territoryIds.has(v.id)) problems.push(`${where}: ид „${v.id}“ се понавља`);
     if (!v.name) problems.push(`${where}: нема назива`);
@@ -193,8 +201,8 @@ export function buildCity({ city, name, reportEmail, updated, territoriesRaw, ru
       streetsByKey.set(key, { name: v.street, settlement: v.settlement });
     }
 
-    if (!v.territory) problems.push(`${where}: нема територије`);
-    else if (!territoryIds.has(v.territory)) problems.push(`${where}: непозната територија „${v.territory}“`);
+    if (!v.territory) problems.push(tr('build.noTerritory', { where }));
+    else if (!territoryIds.has(v.territory)) problems.push(tr('build.unknownTerritory', { where, territory: v.territory }));
 
     const from = parseBound(v.from, `${where}, колона „од“`, problems);
     const to = parseBound(v.to, `${where}, колона „до“`, problems);
@@ -269,13 +277,13 @@ function buildPlaces(rows, territoryIds, territories, problems) {
     const where = `Тачке, ред ${row}`;
     if (!v.name) problems.push(`${where}: нема назива`);
     if (!v.address) problems.push(`${where}: нема адресе`);
-    if (!v.territory) problems.push(`${where}: нема територије`);
-    else if (!territoryIds.has(v.territory)) problems.push(`${where}: непозната територија „${v.territory}“`);
+    if (!v.territory) problems.push(tr('build.noTerritory', { where }));
+    else if (!territoryIds.has(v.territory)) problems.push(tr('build.unknownTerritory', { where, territory: v.territory }));
     const kind = KIND.get(v.kind.toLowerCase());
-    if (!kind) problems.push(`${where}: непозната врста „${v.kind}“ (престоница, сабирна или остало)`);
+    if (!kind) problems.push(tr('build.unknownKind', { where, kind: v.kind }));
     if (kind === 'capital' && v.territory) {
       const prev = capitals.get(v.territory);
-      if (prev) problems.push(`${where}: територија „${v.territory}“ већ има престоницу (ред ${prev})`);
+      if (prev) problems.push(tr('build.dupCapital', { where, territory: v.territory, prev }));
       else capitals.set(v.territory, row);
     }
     // Optional coordinates typed into the Sheet ("ширина"/"дужина"); both or neither. A decimal comma is accepted.
@@ -292,7 +300,7 @@ function buildPlaces(rows, territoryIds, territories, problems) {
     checked.push({ row, v, kind: kind ?? 'other', point });
   }
   for (const t of territories) {
-    if (!capitals.has(t.id)) problems.push(`Тачке: територија „${t.id}“ (${t.name}) нема престоницу`);
+    if (!capitals.has(t.id)) problems.push(tr('build.missingCapital', { id: t.id, name: t.name }));
   }
 
   const nameCount = new Map();
@@ -308,7 +316,7 @@ function buildPlaces(rows, territoryIds, territories, problems) {
       continue;
     }
     if (used.has(id)) {
-      problems.push(`Тачке, ред ${row}: тачка „${v.name}“ у територији „${v.territory}“ се понавља (ред ${used.get(id)})`);
+      problems.push(tr('build.dupPlace', { row, name: v.name, territory: v.territory, first: used.get(id) }));
       continue;
     }
     used.set(id, row);

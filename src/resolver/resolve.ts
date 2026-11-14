@@ -1,6 +1,7 @@
 import type {
   Assignment, CityData, HouseNumber, Parity, Place, Resolution, Rule, Street, Territory, TerritoryStreet,
 } from './types';
+import { tr } from '../profile';
 
 export class DataError extends Error {
   constructor(public readonly problems: string[]) {
@@ -54,7 +55,7 @@ export function createResolver(data: CityData) {
 
   for (const r of data.rules) {
     if (!streets.has(r.streetId)) problems.push(`правило: непозната улица "${r.streetId}"`);
-    if (!territories.has(r.territoryId)) problems.push(`правило за "${r.streetId}": непозната територија "${r.territoryId}"`);
+    if (!territories.has(r.territoryId)) problems.push(tr('resolver.unknownTerritoryRule', { street: r.streetId, territory: r.territoryId }));
     if (r.from !== null && r.to !== null && r.from > r.to) problems.push(`правило за "${r.streetId}": од ${r.from} је веће од до ${r.to}`);
     const list = rulesByStreet.get(r.streetId) ?? [];
     list.push(r);
@@ -62,8 +63,8 @@ export function createResolver(data: CityData) {
   }
   for (const i of data.internal) {
     if (!streets.has(i.streetId)) problems.push(`унутрашња улица: непозната улица "${i.streetId}"`);
-    if (!territories.has(i.territoryId)) problems.push(`унутрашња улица "${i.streetId}": непозната територија "${i.territoryId}"`);
-    if (internal.has(i.streetId)) problems.push(`унутрашња улица "${i.streetId}" је у више територија`);
+    if (!territories.has(i.territoryId)) problems.push(tr('resolver.unknownTerritoryInternal', { street: i.streetId, territory: i.territoryId }));
+    if (internal.has(i.streetId)) problems.push(tr('resolver.internalInMany', { street: i.streetId }));
     internal.set(i.streetId, i.territoryId);
   }
   const places = data.places ?? [];
@@ -72,9 +73,9 @@ export function createResolver(data: CityData) {
   for (const p of places) {
     if (placeIds.has(p.id)) problems.push(`тачка "${p.id}" се понавља`);
     placeIds.add(p.id);
-    if (!territories.has(p.territoryId)) problems.push(`тачка "${p.id}": непозната територија "${p.territoryId}"`);
+    if (!territories.has(p.territoryId)) problems.push(tr('resolver.unknownTerritoryPlace', { place: p.id, territory: p.territoryId }));
     if (p.kind === 'capital') {
-      if (capitals.has(p.territoryId)) problems.push(`територија "${p.territoryId}" има више од једне престонице`);
+      if (capitals.has(p.territoryId)) problems.push(tr('resolver.manyCapitals', { territory: p.territoryId }));
       capitals.set(p.territoryId, p);
     }
   }

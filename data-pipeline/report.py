@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 from territories import CACHE_DIR, PUBLIC_DIR, WORK_DIR, slug
+from vocab import tr
 
 LEAK_RATIO = 4.0   # a territory this many times bigger than the median one is a leak ...
 LEAK_MIN_TERRITORIES = 3  # ... judged only when there are enough territories to have a median
@@ -58,29 +59,25 @@ def check_territories(report: dict) -> list[dict]:
     median = statistics.median(areas) if len(areas) >= LEAK_MIN_TERRITORIES else None
     for tid, s in stats.items():
         if not s["hasCapital"]:
-            critical.append(item("no-capital", f"Територија „{tid}“ нема престоницу.", tid))
+            critical.append(item("no-capital", tr("report.noCapital", id=tid), tid))
             continue
         if s["source"] == "auto":
             if s["capital"]["block"] is None:
-                critical.append(item("capital-off-network",
-                                     f"Престоница територије „{tid}“ није близу ниједног блока уличне мреже.", tid))
+                critical.append(item("capital-off-network", tr("report.capitalOffNetwork", id=tid), tid))
                 continue
             if s["areaM2"] == 0:
-                critical.append(item("no-blocks", f"Територија „{tid}“ нема ниједан блок "
-                                     "(престоница је унутар ручне границе друге територије?).", tid))
+                critical.append(item("no-blocks", tr("report.noBlocks", id=tid), tid))
                 continue
         if s["capitalInsidePolygon"] is False:
-            critical.append(item("capital-outside", f"Престоница територије „{tid}“ је ван њеног полигона.", tid))
+            critical.append(item("capital-outside", tr("report.capitalOutside", id=tid), tid))
         if s["source"] == "auto" and s["touchesCityBoundary"]:
-            critical.append(item("leak-boundary", f"Територија „{tid}“ додирује границу града: обим није затворен "
-                                 "(цури). Место додира:", tid, s["boundaryContact"]))
+            critical.append(item("leak-boundary", tr("report.leakBoundary", id=tid), tid, s["boundaryContact"]))
         if s["source"] == "auto" and median and s["areaM2"] >= LEAK_RATIO * median:
-            critical.append(item("leak-area", f"Територија „{tid}“ је {s['areaM2'] / median:.1f} пута већа од "
-                                 "медијане територија: обим вероватно није затворен.", tid))
+            critical.append(item("leak-area", tr("report.leakArea", id=tid, ratio=f"{s['areaM2'] / median:.1f}"), tid))
     for c in report["conflicts"]:
         critical.append(item(
-            "conflict", f"{len(c['blocks'])} блок(ова) ({c['areaM2']} m²) деле територије "
-            f"{', '.join(c['territories'])}: обим између њих није затворен. Место:", None, c.get("center")))
+            "conflict", tr("report.conflict", count=len(c["blocks"]), area=c["areaM2"], ids=", ".join(c["territories"])),
+            None, c.get("center")))
     return critical
 
 
@@ -99,8 +96,8 @@ def check_border_streets(report: dict, city: dict) -> list[dict]:
         if missing:
             critical.append(item(
                 "border-street-no-rules",
-                f"Ивична улица {describe(b['name'], b['settlement'])} (територије {', '.join(b['territories'])}) "
-                f"нема правила за: {', '.join(missing)}."))
+                tr("report.borderStreet", street=describe(b["name"], b["settlement"]), ids=", ".join(b["territories"]),
+                   missing=", ".join(missing))))
     return critical
 
 
@@ -110,15 +107,15 @@ def check_places(city: dict, geocode: dict | None) -> tuple[list[dict], list[dic
     places = city.get("places") or []
     critical, warnings = [], []
     if not places:
-        warnings.append(item("no-places", "Град нема тачке (лист „Тачке“): картице немају престоницу."))
+        warnings.append(item("no-places", tr("report.noPlaces")))
     for p in places:
         if "lat" in p and "lng" in p:
             continue
         why = reasons.get(p["id"], "geocode.py није покренут за ову адресу")
         text = f"{p['name']}, {p['address']}: {why}"
         if p["kind"] == "capital":
-            critical.append(item("capital-not-geocoded", f"Престоница територије „{p['territoryId']}“ нема "
-                                 f"координате ({text}).", p["territoryId"]))
+            critical.append(item("capital-not-geocoded", tr("report.capitalNotGeocoded", id=p["territoryId"], detail=text),
+                                 p["territoryId"]))
         else:
             warnings.append(item("place-not-geocoded", f"Тачка без координата ({text}).", p["territoryId"]))
     return critical, warnings
@@ -128,8 +125,7 @@ def check_warnings(report: dict, city: dict, osm: dict | None) -> list[dict]:
     warnings = []
     u = report["unassigned"]
     if u["blocks"]:
-        warnings.append(item("unassigned-blocks", f"{u['blocks']} блок(ова) ({u['areaM2']} m²) без територије "
-                             "(на мапи сиво „неподељено“)."))
+        warnings.append(item("unassigned-blocks", tr("report.unassignedBlocks", count=u["blocks"], area=u["areaM2"])))
     if osm is None:
         warnings.append(item("no-osm-index", "Нема OSM индекса улица (data-pipeline/streets.py): "
                              "улице из Sheet-а се не могу упарити."))
@@ -172,7 +168,7 @@ def print_report(result: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Извештај о територијама (#9).")
+    parser = argparse.ArgumentParser(description=tr("report.description"))
     parser.add_argument("--city", required=True, metavar="ИД", help="ид града из cities.yml")
     parser.add_argument("--data", type=Path, help="подразумевано public/data/<град>.json")
     args = parser.parse_args(argv)

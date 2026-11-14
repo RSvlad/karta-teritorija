@@ -1,7 +1,8 @@
 // Input of data-pipeline/territories.py: the Sheet's "Обим" tab plus the capitals' coordinates.
 // Pure (apart from the writer), so it can be checked without network access.
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { PipelineError, readTable } from './build-city.mjs';
+import { PipelineError, readTable, TERRITORIES_TAB } from './build-city.mjs';
+import { tr } from '../../profiles/load.mjs';
 
 const WORK_DIR = 'data-pipeline/work';
 
@@ -17,9 +18,9 @@ export function buildTerritoriesInput(data, scopeRaw) {
   const scope = [];
   for (const { row, values: v } of rows) {
     if (!v.territory || !v.street) {
-      problems.push(`Обим, ред ${row}: попуните територију и улицу`);
+      problems.push(tr('scope.missing', { row }));
     } else if (!ids.has(v.territory)) {
-      problems.push(`Обим, ред ${row}: територија „${v.territory}“ не постоји у листу „Територије“`);
+      problems.push(tr('scope.unknownTerritory', { row, territory: v.territory, tab: TERRITORIES_TAB }));
     } else {
       scope.push({ territory: v.territory, street: v.street, settlement: v.settlement, from: v.from, to: v.to });
     }

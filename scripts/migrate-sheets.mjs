@@ -8,10 +8,14 @@
 // and formulas" switched OFF (ids such as 01 and the ажурирано date must stay text). Name every tab exactly like
 // the file. See README, "Пренос са Sheet-ова по граду".
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { activeProfile } from '../profiles/load.mjs';
 import { fetchModifiedDate, fetchSheet, getAccessToken, parseCredentials, DRIVE_METADATA_SCOPE, SHEETS_SCOPE } from '../data-pipeline/lib/sheets.mjs';
 
 const OUT = 'data-pipeline/work/migration';
-const TABS = ['Територије', 'Правила', 'Тачке', 'Обим', 'Границе'];
+// The per-city Sheets always called the tab "Територије"; in the central Sheet it has the name of the profile.
+const SOURCE_TERRITORIES_TAB = 'Територије';
+const TABS = [SOURCE_TERRITORIES_TAB, 'Правила', 'Тачке', 'Обим', 'Границе'];
+const centralTitle = (title) => (title === SOURCE_TERRITORIES_TAB ? activeProfile().sheet.territoriesTab : title);
 
 const csvCell = (v) => {
   const s = String(v ?? '');
@@ -50,12 +54,12 @@ const cityRows = [['ид', 'назив', 'place', 'насеља', 'reportEmail',
 
 for (const c of cities) {
   for (const title of TABS) {
-    const raw = await fetchSheet(token, c.sheetId, title, { optional: title !== 'Територије' && title !== 'Правила' });
+    const raw = await fetchSheet(token, c.sheetId, title, { optional: title !== SOURCE_TERRITORIES_TAB && title !== 'Правила' });
     if (raw === null) continue;
     const [header = [], ...body] = raw;
     merged[title] ??= [['град', ...header]];
     if (merged[title][0].slice(1).join('\u0000') !== header.join('\u0000')) {
-      console.warn(`! ${c.id}: колоне листа „${title}“ су другачије од првог града; проверите ${title}.csv након увоза.`);
+      console.warn(`! ${c.id}: колоне листа „${title}“ су другачије од првог града; проверите ${centralTitle(title)}.csv након увоза.`);
     }
     for (const row of body) if (row.some((v) => String(v).trim() !== '')) merged[title].push([c.id, ...row]);
   }
@@ -67,6 +71,6 @@ for (const c of cities) {
 
 writeFileSync(`${OUT}/Градови.csv`, toCsv(cityRows));
 for (const [title, rows] of Object.entries(merged)) {
-  if (rows) writeFileSync(`${OUT}/${title}.csv`, toCsv(rows));
+  if (rows) writeFileSync(`${OUT}/${centralTitle(title)}.csv`, toCsv(rows));
 }
-console.log(`\nГотово: ${OUT}/ (${Object.entries(merged).filter(([, r]) => r).map(([t]) => t).concat('Градови').join(', ')}).`);
+console.log(`\nГотово: ${OUT}/ (${Object.entries(merged).filter(([, r]) => r).map(([t]) => centralTitle(t)).concat('Градови').join(', ')}).`);

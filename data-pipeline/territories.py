@@ -38,6 +38,8 @@ from shapely.geometry import Point, mapping, shape
 from shapely.ops import polygonize, substring, unary_union
 from shapely.strtree import STRtree
 
+from vocab import tr
+
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
 CACHE_DIR = HERE / "cache"
@@ -537,18 +539,18 @@ def load_input(path: Path) -> tuple[list, list, list | None]:
     for t in territories:
         tid = str(t.get("id", "")).strip() if isinstance(t, dict) else ""
         if not tid or tid in seen:
-            raise ValueError(f"{path.name}: територија без ида или са поновљеним идом „{tid}“")
+            raise ValueError(tr("draw.duplicateId", file=path.name, id=tid))
         seen.add(tid)
         cap = t.get("capital")
         if cap is not None and not (isinstance(cap, dict) and {"lat", "lng"} <= cap.keys()):
-            raise ValueError(f"{path.name}: престоница територије „{tid}“ мора имати lat и lng")
+            raise ValueError(tr("draw.capitalNeedsCoords", file=path.name, id=tid))
     for row in scope:
         if not isinstance(row, dict) or str(row.get("territory", "")) not in seen:
-            raise ValueError(f"{path.name}: ред Обима упућује на непознату територију: {row}")
+            raise ValueError(tr("draw.scopeUnknown", file=path.name, row=row))
     for row in rules or []:
         ids = row.get("territories") if isinstance(row, dict) else None
         if not isinstance(ids, list) or not ids or not {str(i) for i in ids} <= seen:
-            raise ValueError(f"{path.name}: правило упућује на непознату територију: {row}")
+            raise ValueError(tr("draw.ruleUnknown", file=path.name, row=row))
     return territories, scope, rules
 
 
@@ -672,27 +674,27 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
         json.dumps({"type": "FeatureCollection", "features": features}, ensure_ascii=False) + "\n",
         encoding="utf-8")
 
-    print(f"✔ {city_id}: територија {len(drawing.polygons)}/{len(seeds)}, блокова {len(blocks)}, "
-          f"унутрашњих улица {len(internal)}")
+    print(tr("draw.summary", city=city_id, drawn=len(drawing.polygons), seeds=len(seeds), blocks=len(blocks),
+             internal=len(internal)))
     for tid, s in stats.items():
         note = ""
         if s["source"] == "auto" and seeds[tid] is None:
-            note = "  ! нема престонице"
+            note = "  ! " + tr("draw.noteNoCapital")
         elif s["source"] == "auto" and s["capital"]["block"] is None:
-            note = "  ! престоница није близу ниједног блока"
+            note = "  ! " + tr("draw.noteCapitalOffNetwork")
         elif s["touchesCityBoundary"] and s["source"] != "streets":
             note = "  ! додирује границу града (обим можда није затворен)"
         print(f"  {tid}: {s['source']}, блокова {s['blocks']}, {s['areaM2']} m²{note}")
     for c in drawing.conflicts:
-        print(f"  ! блокови које деле територије {', '.join(c['territories'])}: {len(c['blocks'])}")
+        print("  ! " + tr("draw.conflicts", ids=', '.join(c['territories']), count=len(c['blocks'])))
     if drawing.unassigned:
-        print(f"  ! блокова без територије: {report['unassigned']['blocks']}")
+        print("  ! " + tr("draw.unassigned", count=report['unassigned']['blocks']))
     if from_streets:
         empty = [tid for tid in seeds if tid not in drawing.polygons]
         if empty:
-            print(f"  ! територије без иједног блока (нема им додељених улица у OSM мрежи): {', '.join(empty)}")
+            print("  ! " + tr("draw.empty", ids=', '.join(empty)))
         if ties:
-            print(f"  ! блокова између две територије без премоћи: {ties}")
+            print("  ! " + tr("draw.ties", count=ties))
         if unmatched:
             print("  ! улице из Правила којих нема у OSM мрежи (проверите писање):\n"
                   + "\n".join(f"      • {name}" for name in unmatched))
@@ -700,7 +702,7 @@ def run(city_id: str, input_path: Path, out_dir: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Аутоматско исцртавање територија (#8).")
+    parser = argparse.ArgumentParser(description=tr("draw.description"))
     parser.add_argument("--city", required=True, metavar="ИД", help="ид града из cities.yml")
     parser.add_argument("--refresh", action="store_true",
                         help="поново преузми уличну мрежу из OSM-а (иначе се користи кеш)")

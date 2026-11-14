@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Resolver } from '../resolver';
+import { tr } from '../profile';
 import { projectTerritory, starPoints } from '../geo/svgMap';
 import type { Geometry } from '../geo/geo';
 import { renderBasemap } from './printBasemap';
@@ -120,7 +121,7 @@ export function PrintMaps({ cityId, territoryIds, resolver }: { cityId: string; 
         const right = c !== null && c.x > W * 0.6; // label on the side with more room
         return (
           <figure key={territory.id} class="print-map">
-            <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Мапа територије ${territory.id} „${territory.name}“`}>
+            <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={tr('territory.mapAria', { id: territory.id, name: territory.name })}>
               <defs>
                 <pattern id={hatch} width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                   <line x1="0" y1="0" x2="0" y2="8" stroke="#000" stroke-width="1.2" />
@@ -150,7 +151,7 @@ export function PrintMaps({ cityId, territoryIds, resolver }: { cityId: string; 
             </svg>
             <figcaption>
               <span class="swatch" style={{ background: territory.color }} aria-hidden="true" />
-              Територија {territory.id} „{territory.name}“{c && <> · <span aria-hidden="true">★ </span>престоница</>}
+              {tr('territory.heading', { id: territory.id, name: territory.name })}{c && <> · <span aria-hidden="true">★ </span>{tr('capital.printCaption')}</>}
             </figcaption>
           </figure>
         );

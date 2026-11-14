@@ -1,7 +1,7 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { lookup, openApp } from './helpers';
+import { lookup, openApp, tr } from './helpers';
 
 const THEME_KEY = 'moj-paroh:theme';
 const SCRIPT_KEY = 'moj-paroh:script';
@@ -23,7 +23,7 @@ const screens: { name: string; show: (page: Page) => Promise<void> }[] = [
     name: 'панел мапе',
     show: async (page) => {
       await page.getByRole('button', { name: 'Прикажи мапу' }).click();
-      await expect(page.getByRole('list', { name: 'Територије' })).toBeVisible();
+      await expect(page.getByRole('list', { name: tr('territory.listAria') })).toBeVisible();
     },
   },
 ];
