@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { checkProfile, DEFAULT_PROFILE, format, listProfiles, loadProfile, PROFILES_DIR } from './load.mjs';
 
@@ -43,7 +43,8 @@ describe('профили', () => {
       .flatMap((dir) => readdirSync(join(root, dir), { recursive: true, withFileTypes: true })
         .filter((e) => e.isFile() && /\.(ts|tsx|mjs|py)$/.test(e.name) && !e.name.includes('.test.'))
         .map((e) => join(e.parentPath ?? e.path, e.name)))
-      .filter((f) => !f.includes('node_modules') && !f.includes('/work/') && !f.includes('/cache/'));
+      // Judge the path inside the repository: its absolute path may itself contain "/work/" (GitHub runners).
+      .filter((f) => !/(^|[\\/])(node_modules|work|cache)[\\/]/.test(relative(root, f)));
     const used = new Set();
     for (const file of files) {
       for (const m of readFileSync(file, 'utf8').matchAll(/\btr\(\s*['"]([\w.]+)['"]/g)) used.add(m[1]);
