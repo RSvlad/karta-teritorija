@@ -83,6 +83,12 @@ function labelPoint(g: Geometry): [number, number] | null {
 
 const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
 
+/** Text of a territory label in the chosen script: the number, and the name that is shown only when zoomed in. */
+function setLabel(el: HTMLElement, id: string, name: string): void {
+  el.querySelector('.id')!.textContent = tx(id);
+  el.querySelector('.name')!.textContent = tx(name);
+}
+
 interface PlaceMarker {
   place: Place;
   el: HTMLButtonElement;
@@ -117,7 +123,7 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<PlaceMarker[]>([]);
-  const labelsRef = useRef<{ id: string; text: string; el: HTMLElement }[]>([]);
+  const labelsRef = useRef<{ id: string; name: string; el: HTMLElement }[]>([]);
   const featuresRef = useRef<{ id: string; geometry: Geometry }[]>([]);
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
   const boundsRef = useRef(new Map<string, Bounds>());
@@ -174,17 +180,30 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
         map.addSource('territories', { type: 'geojson', data: { type: 'FeatureCollection', features } as never });
         map.addLayer({
           id: 'territories-fill', type: 'fill', source: 'territories',
-          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['get', 'assigned'], 0.35, 0.2] },
+          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': ['case', ['get', 'assigned'], 0.28, 0.14] },
         });
         map.addLayer({
-          id: 'territories-line', type: 'line', source: 'territories',
+          id: 'territories-casing', type: 'line', source: 'territories', layout: { 'line-join': 'round' },
+          paint: { 'line-color': '#ffffff', 'line-width': 5.5, 'line-opacity': 0.9 },
+        });
+        map.addLayer({
+          id: 'territories-line', type: 'line', source: 'territories', layout: { 'line-join': 'round' },
           paint: { 'line-color': ['get', 'color'], 'line-width': 2.5 },
         });
         map.addLayer({
-          id: 'territories-selected', type: 'line', source: 'territories',
+          id: 'territories-selected-fill', type: 'fill', source: 'territories',
           filter: ['==', ['get', 'id'], '\u0000'],
-          paint: { 'line-color': '#1b1b1b', 'line-width': 4 },
+          paint: { 'fill-color': ['get', 'color'], 'fill-opacity': 0.3 },
         });
+        map.addLayer({
+          id: 'territories-selected', type: 'line', source: 'territories', layout: { 'line-join': 'round' },
+          filter: ['==', ['get', 'id'], '\u0000'],
+          paint: { 'line-color': '#0e1b2e', 'line-width': 4 },
+        });
+        // The territory names appear only when zoomed in far enough to read (see .map-label in styles.css).
+        const syncZoom = () => box.current?.classList.toggle('zoomed', map!.getZoom() >= 13.5);
+        map.on('zoom', syncZoom);
+        syncZoom();
         map.on('mouseenter', 'territories-fill', () => { map!.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'territories-fill', () => { map!.getCanvas().style.cursor = ''; });
         map.on('click', (e) => {
@@ -205,9 +224,15 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
         const el = document.createElement('div');
         el.className = 'map-label';
         el.setAttribute('aria-hidden', 'true');
-        el.textContent = tx(`${t.id} ${t.name}`);
+        el.style.setProperty('--tc', f.properties.color);
+        const idEl = document.createElement('span');
+        idEl.className = 'id';
+        const nameEl = document.createElement('span');
+        nameEl.className = 'name';
+        el.append(idEl, nameEl);
+        setLabel(el, t.id, t.name);
         new maplibregl.Marker({ element: el }).setLngLat(spot).addTo(map);
-        labelsRef.current.push({ id: t.id, text: `${t.id} ${t.name}`, el });
+        labelsRef.current.push({ id: t.id, name: t.name, el });
       }
 
       // Capital = star, other points = smaller dot. Places the pipeline could not geocode have no marker.
@@ -244,7 +269,7 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
   // Labels and marker names are plain DOM, drawn once: redo their text when the script is switched.
   const script = useScript();
   useEffect(() => {
-    for (const { text, el } of labelsRef.current) el.textContent = tx(text);
+    for (const { id, name, el } of labelsRef.current) setLabel(el, id, name);
     for (const { place, el } of markersRef.current) el.setAttribute('aria-label', markerLabel(place));
     userMarkerRef.current?.getElement().setAttribute('aria-label', tx('Ваша локација'));
   }, [script, status.kind]);
@@ -259,6 +284,7 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
     if (!map || status.kind !== 'ready') return;
     const shown = visible ? ['in', ['get', 'id'], ['literal', [...visible]]] : null;
     map.setFilter('territories-fill', shown as never);
+    map.setFilter('territories-casing', shown as never);
     map.setFilter('territories-line', shown as never);
   }, [showPoints, visible, status.kind]);
 
@@ -294,7 +320,9 @@ export default function MapView({ cityId, data, resolver, selected, focus, showP
     const selectedPlace = selected?.kind === 'place' ? resolver.places.find((x) => x.id === selected.id) : undefined;
     // A selected point highlights its territory too, so "Прикажи на мапи" shows where the street's territory is.
     const highlighted = selected?.kind === 'territory' ? selected.id : selectedPlace?.territoryId;
-    map.setFilter('territories-selected', ['==', ['get', 'id'], highlighted ?? '\u0000']);
+    const isSelected = ['==', ['get', 'id'], highlighted ?? '\u0000'] as never;
+    map.setFilter('territories-selected', isSelected);
+    map.setFilter('territories-selected-fill', isSelected);
     for (const { place, el } of markersRef.current) {
       el.setAttribute('aria-pressed', String(selected?.kind === 'place' && selected.id === place.id));
     }
