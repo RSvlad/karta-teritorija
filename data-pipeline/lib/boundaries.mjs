@@ -2,7 +2,8 @@
 // Columns: територија (id), геометрија (GeoJSON Polygon/MultiPolygon, WGS84). They replace the automatic
 // borders of territories.py, which reads them from data-pipeline/work/<city>/overrides/<id>.geojson.
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { PipelineError } from './build-city.mjs';
+import { PipelineError, TERRITORIES_TAB, TERRITORY_COLUMN } from './build-city.mjs';
+import { tr } from '../../profiles/load.mjs';
 
 const WORK_DIR = 'data-pipeline/work';
 
@@ -10,10 +11,10 @@ const WORK_DIR = 'data-pipeline/work';
 export function parseBoundaries(raw, territoryIds) {
   if (!raw || raw.length < 2) return [];
   const head = raw[0].map((h) => String(h).trim().toLowerCase());
-  const idCol = head.indexOf('територија');
+  const idCol = head.findIndex((h) => TERRITORY_COLUMN.includes(h));
   const geoCol = head.indexOf('геометрија');
   if (idCol < 0 || geoCol < 0) {
-    throw new PipelineError(['Границе: недостају колоне „територија“ и „геометрија“']);
+    throw new PipelineError([tr('boundaries.missingColumns', { column: TERRITORY_COLUMN[0] })]);
   }
   const problems = [];
   const out = new Map();
@@ -22,7 +23,7 @@ export function parseBoundaries(raw, territoryIds) {
     const id = String(r[idCol] ?? '').trim();
     const text = String(r[geoCol] ?? '').trim();
     if (!id && !text) return;
-    if (!territoryIds.has(id)) return void problems.push(`Границе, ред ${row}: територија „${id}“ не постоји у листу „Територије“`);
+    if (!territoryIds.has(id)) return void problems.push(tr('boundaries.unknownTerritory', { row, id, tab: TERRITORIES_TAB }));
     let geometry;
     try {
       geometry = JSON.parse(text);

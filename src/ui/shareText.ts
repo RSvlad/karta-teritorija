@@ -1,9 +1,10 @@
 import { coversAllNumbers, formatHouseNumber, formatRange } from '../resolver';
 import type { Assignment, Place, Resolution } from '../resolver';
+import { tr } from '../profile';
 
 /** "★ Престоница: назив, адреса"; the territory is named only when the card spans several. */
 export function capitalText(p: Place, withTerritory: boolean): string {
-  return `★ Престоница${withTerritory ? ` (територија ${p.territoryId})` : ''}: ${p.name}, ${p.address}`;
+  return `★ ${withTerritory ? tr('capital.labelFor', { id: p.territoryId }) : tr('capital.label')}: ${p.name}, ${p.address}`;
 }
 
 function peopleText(a: Assignment): string {
@@ -26,7 +27,7 @@ function assignmentLines(assignments: Assignment[], withRange: boolean): string[
     let end = i + 1;
     while (end < assignments.length && assignments[end]!.territory.id === territory.id) end++;
     const group = assignments.slice(i, end);
-    const heading = `Територија ${territory.id} „${territory.name}“:`;
+    const heading = `${tr('territory.heading', { id: territory.id, name: territory.name })}:`;
     if (group.length === 1) lines.push(`${heading} ${assigneeText(group[0]!, withRange)}`);
     else lines.push(heading, ...group.map((a) => `  ${assigneeText(a, withRange)}`));
     i = end;

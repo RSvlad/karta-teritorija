@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { coversAllNumbers, createResolver, DataError, formatHouseNumber, formatRange, parseHouseNumber } from '../resolver';
 import type { Assignment, CityData, HouseNumber, Place, Resolution, Resolver, Street, TerritoryStreet } from '../resolver';
 import { createSearch, hitId, hitName } from '../search/search';
+import { profile, tr } from '../profile';
 import type { Hit } from '../search/search';
 import { highlightParts } from '../search/highlight';
 import { normalizeText } from '../search/normalize';
@@ -131,7 +132,7 @@ function Cities({ cities }: { cities: CityRef[] }) {
   return (
     <main>
       <header class="top">
-        <h1>Територије · {current.name}</h1>
+        <h1>{profile.app.title} · {current.name}</h1>
         <Prefs />
       </header>
       {!online && <p class="warn" role="status">Нисте на мрежи. Приказују се подаци сачувани на уређају.</p>}
@@ -333,7 +334,7 @@ function Search({ cityId, data, resolver, route, go }: SearchProps) {
               <span>
                 {/* The icon is decoration; the kind is also spoken and, for places, the address is shown. */}
                 <span class="kind" aria-hidden="true">{h.kind === 'street' ? '🛣️' : h.place.kind === 'capital' ? '★' : '📍'}</span>
-                <span class="sr-only">{h.kind === 'street' ? 'Улица: ' : h.place.kind === 'capital' ? 'Престоница: ' : 'Тачка: '}</span>
+                <span class="sr-only">{h.kind === 'street' ? 'Улица: ' : h.place.kind === 'capital' ? `${tr('capital.label')}: ` : 'Тачка: '}</span>
                 <Highlight text={hitName(h)} query={query} />
                 {h.kind === 'street' && h.street.settlement && <span class="muted"> · {h.street.settlement}</span>}
                 {h.kind === 'place' && <span class="muted"> · {h.place.address}</span>}
@@ -405,7 +406,7 @@ function TerritoryHeading({ a }: { a: Assignment }) {
   return (
     <h2>
       <span class="swatch" style={{ background: a.territory.color }} aria-hidden="true" />
-      Територија {a.territory.id} „{a.territory.name}“
+      {tr('territory.heading', { id: a.territory.id, name: a.territory.name })}
     </h2>
   );
 }
@@ -481,7 +482,7 @@ function CapitalLine({ place, withTerritory, onShowOnMap }: { place: Place; with
     <div class="capital">
       <p>
         <span aria-hidden="true">★ </span>
-        Престоница{withTerritory ? ` (територија ${place.territoryId})` : ''}: <strong>{place.name}</strong>, {place.address}
+        {withTerritory ? tr('capital.labelFor', { id: place.territoryId }) : tr('capital.label')}: <strong>{place.name}</strong>, {place.address}
       </p>
       {place.note && <p class="muted">{place.note}</p>}
       <PlaceLinks place={place} onShowOnMap={onShowOnMap} />
@@ -503,11 +504,11 @@ function StaleWarning({ updated }: { updated: string }) {
 function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; resolver: Resolver; city: string; cityId: string; updated: string }) {
   const territory = resolver.territories.get(place.territoryId)!;
   const title = `${place.name} · ${city}`;
-  const kind = place.kind === 'capital' ? 'Престоница' : place.kind === 'collector' ? 'Сабирна тачка' : 'Тачка';
+  const kind = place.kind === 'capital' ? tr('capital.label') : place.kind === 'collector' ? 'Сабирна тачка' : 'Тачка';
   const text = [
     title,
     `${kind}: ${place.address}`,
-    `Територија ${territory.id} „${territory.name}“: ${territory.defaults.primary}`,
+    `${tr('territory.heading', { id: territory.id, name: territory.name })}: ${territory.defaults.primary}`,
     ...(place.note ? [place.note] : []),
   ].join('\n');
   return (
@@ -521,7 +522,7 @@ function PlaceCard({ place, resolver, city, cityId, updated }: { place: Place; r
       {place.note && <p class="muted">{place.note}</p>}
       <h2>
         <span class="swatch" style={{ background: territory.color }} aria-hidden="true" />
-        Територија {territory.id} „{territory.name}“
+        {tr('territory.heading', { id: territory.id, name: territory.name })}
       </h2>
       <p><strong>{territory.defaults.primary}</strong></p>
       <PlaceLinks place={place} />
@@ -539,7 +540,7 @@ function TerritoryCard({ territoryId, resolver, city, cityId, updated }: { terri
   const capital = resolver.capitalOf(territory.id);
   const points = resolver.places.filter((p) => p.territoryId === territory.id && p.kind !== 'capital');
   const streets = resolver.streetsOf(territory.id);
-  const title = `Територија ${territory.id} „${territory.name}“ · ${city}`;
+  const title = `${tr('territory.heading', { id: territory.id, name: territory.name })} · ${city}`;
   const people = territory.defaults.deputy
     ? `${territory.defaults.primary} (заменик: ${territory.defaults.deputy})`
     : territory.defaults.primary;
@@ -637,13 +638,13 @@ function NearestCapital({ place, meters, resolver }: { place: Place; meters: num
   const territory = resolver.territories.get(place.territoryId);
   return (
     <article class="card">
-      <h2 class="card-title">Најближа престоница</h2>
+      <h2 class="card-title">{tr('capital.nearest')}</h2>
       <p>
         <span aria-hidden="true">★ </span>
         <strong>{place.name}</strong>, {place.address}
       </p>
       <p class="muted">
-        {formatDistance(meters)} ваздушном линијом{territory ? ` · територија ${territory.id} „${territory.name}“` : ''}
+        {formatDistance(meters)} ваздушном линијом{territory ? ` · ${tr('territory.inlineNamed', { id: territory.id, name: territory.name })}` : ''}
       </p>
       <PlaceLinks place={place} />
     </article>
@@ -802,7 +803,7 @@ function MapSection({ cityId, data, resolver, request }: {
   const shown = visible ? territories.filter((t) => visible.has(t.id)) : territories;
 
   return (
-    <section class="map-section" aria-label="Мапа територија" ref={sectionRef}>
+    <section class="map-section" aria-label={tr('territory.sectionAria')} ref={sectionRef}>
       <div class="map-actions">
         <button
           type="button"
@@ -824,7 +825,7 @@ function MapSection({ cityId, data, resolver, request }: {
           {territories.length > 1 && (
             <div class="map-filters">
               <label>
-                Територија
+                {tr('territory.filterLabel')}
                 <select value={territoryFilter} onChange={(e) => setTerritoryFilter(e.currentTarget.value)}>
                   <option value="">Све</option>
                   {territories.map((t) => <option key={t.id} value={t.id}>{t.id} {t.name}</option>)}
@@ -858,9 +859,9 @@ function MapSection({ cityId, data, resolver, request }: {
               </label>
             )}
             {shown.length === 0 ? (
-              <p class="muted" role="status">Нема територија за изабране филтере.</p>
+              <p class="muted" role="status">{tr('territory.noMatch')}</p>
             ) : (
-              <ul class="plain territory-list" aria-label="Територије">
+              <ul class="plain territory-list" aria-label={tr('territory.listAria')}>
                 {shown.map((t) => (
                   <li key={t.id}>
                     <button
@@ -913,20 +914,20 @@ function MapSection({ cityId, data, resolver, request }: {
         <section class="locate" ref={locateRef} aria-label="Ваша локација">
           {located?.territoryId ? (
             <>
-              <p role="status">Налазите се у територији {located.territoryId}.</p>
+              <p role="status">{tr('territory.youAreIn', { id: located.territoryId })}</p>
               <TerritoryCard territoryId={located.territoryId} resolver={resolver} city={data.name} cityId={cityId} updated={data.updated} />
             </>
           ) : located?.polygons ? (
-            <p role="status">Налазите се ван свих територија.</p>
+            <p role="status">{tr('territory.youAreOutside')}</p>
           ) : located || loadFailed ? (
-            <p class="warn" role="status">Територију није могуће одредити: мапа са границама није доступна.</p>
+            <p class="warn" role="status">{tr('territory.cannotLocate')}</p>
           ) : (
-            <p class="muted" role="status">Одређивање територије…</p>
+            <p class="muted" role="status">{tr('territory.locating')}</p>
           )}
           {nearestCapital ? (
             <NearestCapital place={nearestCapital.item} meters={nearestCapital.meters} resolver={resolver} />
           ) : (
-            <p class="muted">Најближа престоница се не може одредити: ни једна нема координате.</p>
+            <p class="muted">{tr('capital.nearestUnknown')}</p>
           )}
           <p class="muted">Локација се користи само у овом прегледачу: не шаље се нигде и не чува се.</p>
           <button type="button" class="button secondary" onClick={clearLocation}>Уклони локацију</button>
@@ -1056,7 +1057,7 @@ function ResultCard({ result, resolver, city, cityId, reportEmail, updated, onSh
       // A city without territories has only its street list so far: nothing is assigned, so there is nothing to report.
       const noTerritories = resolver.territories.size === 0;
       body = noTerritories ? (
-        <p>Територије за овај град још нису унете.</p>
+        <p>{tr('territory.noneYet')}</p>
       ) : (
         <>
           <p>Улица није додељена.</p>

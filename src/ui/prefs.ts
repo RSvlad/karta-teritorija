@@ -2,6 +2,7 @@ import { Fragment, options } from 'preact';
 import type { ComponentChildren, VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { cyrillicToLatin } from '../i18n/translit';
+import { profile } from '../profile';
 
 /**
  * Display preferences: script (Cyrillic/Latin) and colour theme. Both are remembered in this browser only.
@@ -14,7 +15,7 @@ import { cyrillicToLatin } from '../i18n/translit';
 const SCRIPT_KEY = 'moj-paroh:script';
 // Also read by the inline script in index.html, which sets the theme before the first paint.
 const THEME_KEY = 'moj-paroh:theme';
-const TITLE = 'Територије';
+const TITLE = profile.app.title;
 
 const SCRIPTS = ['cyr', 'lat'] as const;
 const THEMES = ['auto', 'light', 'dark'] as const;
