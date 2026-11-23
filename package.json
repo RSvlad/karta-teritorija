@@ -17,16 +17,16 @@
   "dependencies": {
     "@fontsource-variable/literata": "^5.3.0",
     "@fontsource-variable/source-sans-3": "^5.3.1",
-    "maplibre-gl": "^6.16.0",
-    "preact": "^11.1.0"
+    "maplibre-gl": "^6.18.0",
+    "preact": "^11.2.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.14.0",
-    "@lhci/cli": "^0.16.0",
-    "@playwright/test": "^1.64.1",
+    "@lhci/cli": "^0.16.1",
+    "@playwright/test": "^1.65.1",
     "@preact/preset-vite": "^2.9.0",
     "typescript": "^7.0.2",
-    "vite": "^8.3.5",
+    "vite": "^8.3.8",
     "vite-plugin-pwa": "^2.0.0",
     "vitest": "^5.1.0"
   },
